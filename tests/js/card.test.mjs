@@ -125,7 +125,21 @@ test("kortet ritas i ha-card och tar färger och typsnitt bara från temat", () 
   const root = renderCard(fakeHass({ notices: [notice("value_glance")], values: [BILEN] }));
 
   assert.ok(root.querySelector("ha-card .glance"));
-  const declarations = [...root.querySelector("style").sheet.cssRules].flatMap((rule) =>
+  const style = root.querySelector("style");
+  // happy-dom slänger tyst deklarationer vars värde den inte förstår, till exempel
+  // oklch(). Varje deklaration måste överleva tolkningen för att kontrollen nedan ska se den.
+  const written = style.textContent
+    .split("}")
+    .flatMap((rule) => rule.split("{")[1]?.split(";") ?? [])
+    .map((declaration) => declaration.trim())
+    .filter(Boolean);
+  const dropped = written.filter((declaration) => {
+    const probe = document.createElement("div");
+    probe.style.cssText = declaration;
+    return probe.style.length === 0;
+  });
+  assert.deepEqual(dropped, []);
+  const declarations = [...style.sheet.cssRules].flatMap((rule) =>
     Array.from(rule.style, (property) => [property, rule.style.getPropertyValue(property)]),
   );
   const themed = declarations.filter(([property]) => property.endsWith("color") || THEMED.has(property));
