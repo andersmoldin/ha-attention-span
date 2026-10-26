@@ -5,21 +5,26 @@ const DOMAIN = "attention_span";
 // annat värde betyder att kort och integration inte hör ihop; sådana notiser läses inte.
 const CONTRACT = 1;
 
-// Nivåer som behöver hushållet. Så länge en notis har någon av dem är det inte lugnt,
-// även när kortet inte kan rita notisens Typ.
-const NEEDS_ATTENTION = ["alarm", "problem", "ongoing"];
+// Nivåer som behöver hushållet och ritas som ett eget kort per notis. Så länge en notis
+// har någon av dem är det inte lugnt, även när kortet inte kan rita notisens Typ.
+export const NEEDS_ATTENTION = ["alarm", "problem", "ongoing"];
 
 // Typer som kortet kan rita. Notiser av andra Typer ritas inte förrän kortet kan det.
 const DRAWN_TYPES = ["value", "status"];
 
-// Typen Status: tillståndet och hur länge det har gällt.
-const STATUS_TEXT = {
-  en: (state, duration) => `${state} for ${duration}`,
-  sv: (state, duration) => `${state} i ${duration}`,
+// Kortets egna texter, valda efter användarens språk (ADR 0001). status är Typen Status:
+// tillståndet och hur länge det har gällt.
+const STRINGS = {
+  en: { calm: "All is calm at home.", status: (state, duration) => `${state} for ${duration}` },
+  sv: { calm: "Allt är lugnt hemma.", status: (state, duration) => `${state} i ${duration}` },
 };
 
 function language(hass) {
   return hass.locale?.language ?? hass.language;
+}
+
+export function strings(hass) {
+  return STRINGS[language(hass)] ?? STRINGS.en;
 }
 
 // Hur länge, i hela minuter under en timme, i timmar under två dygn och därefter i dygn.
@@ -39,9 +44,7 @@ function content(hass, type, shown, now) {
   if (!shown) return "–";
   const state = hass.formatEntityState(shown);
   if (type !== "status") return state;
-  const lang = language(hass);
-  const phrase = STATUS_TEXT[lang] ?? STATUS_TEXT.en;
-  return phrase(state, duration(now - Date.parse(shown.last_changed), lang));
+  return strings(hass).status(state, duration(now - Date.parse(shown.last_changed), language(hass)));
 }
 
 function row(hass, stateObj, now) {

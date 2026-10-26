@@ -11,7 +11,7 @@ CONF_ICON: Final = "icon"
 CONF_ENTITIES: Final = "entities"
 CONF_LEVELS: Final = "levels"
 CONF_PRIORITY: Final = "priority"
-# Dölj när: villkor som gör regeln dold oavsett nivåvillkor.
+# Hide condition (dölj-villkor, «Dölj när» i formuläret): gör regeln dold oavsett nivåvillkor.
 CONF_HIDE: Final = "hide"
 
 TYPE_STATUS: Final = "status"

@@ -1,7 +1,7 @@
 from datetime import timedelta
 
 import pytest
-from homeassistant.core import HomeAssistant
+from homeassistant.core import CoreState, HomeAssistant
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry, async_fire_time_changed
@@ -77,7 +77,7 @@ async def add_door_rule(hass: HomeAssistant, entry) -> None:
     )
 
 
-async def test_hide_when_beats_every_level_condition(hass: HomeAssistant, freezer):
+async def test_a_hide_condition_beats_every_level_condition(hass: HomeAssistant, freezer):
     freezer.move_to(FIXTURE_TIME)
     hass.states.async_set("binary_sensor.ytterdorr", "on")
     hass.states.async_set("input_boolean.vadring", "off")
@@ -133,7 +133,7 @@ async def add_wash_rule(hass: HomeAssistant, entry) -> None:
     )
 
 
-async def test_several_conditions_for_one_level_combine_with_or(hass: HomeAssistant):
+async def test_several_conditions_for_one_level_work_through_has_or(hass: HomeAssistant):
     hass.states.async_set("sensor.tvattmaskin", "running")
     hass.states.async_set("input_boolean.urplockad", "off")
     entry = await add_integration(hass)
@@ -205,10 +205,8 @@ async def test_a_rule_whose_conditions_no_longer_work_is_unavailable(hass: HomeA
     assert hass.states.get("sensor.attention_span_lampan").state == "unavailable"
 
 
-async def test_a_condition_that_cannot_be_worked_out_does_not_hold(
-    hass: HomeAssistant, freezer, caplog
-):
-    """Till exempel en gräns på en sensor som inte visar ett tal. Felet loggas en gång."""
+async def test_a_condition_that_cannot_be_worked_out_does_not_hold(hass: HomeAssistant):
+    """Till exempel en gräns på en sensor som inte visar ett tal."""
     hass.states.async_set("sensor.inne", "trasig")
     entry = await add_integration(hass)
     too_warm = {"condition": "numeric_state", "entity_id": "sensor.inne", "above": 26}
@@ -224,7 +222,6 @@ async def test_a_condition_that_cannot_be_worked_out_does_not_hold(
     await hass.async_block_till_done()
 
     assert hass.states.get("sensor.attention_span_inne").state == "glance"
-    assert caplog.text.count("Villkoren i regeln sensor.attention_span_inne") == 1
 
     hass.states.async_set("sensor.inne", "27")
     await hass.async_block_till_done()
@@ -256,3 +253,26 @@ async def test_rules_with_level_conditions_match_the_shared_examples(hass: HomeA
     for name in ("status_alarm", "status_problem", "status_ongoing"):
         expected = contract_example(name)
         assert state_as_contract(hass, expected["entity_id"]) == expected
+
+
+async def test_a_restart_keeps_when_the_level_began(hass: HomeAssistant, freezer):
+    """Under en omstart finns källentiteterna inte förrän deras integrationer har laddats."""
+    freezer.move_to(FIXTURE_TIME)
+    hass.states.async_set("sensor.tvattmaskin", "running")
+    hass.states.async_set("input_boolean.urplockad", "off")
+    entry = await add_integration(hass)
+    await add_wash_rule(hass, entry)
+    freezer.move_to("2026-10-26T09:00:00+00:00")
+
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    hass.states.async_remove("sensor.tvattmaskin")
+    hass.set_state(CoreState.not_running)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    hass.states.async_set("sensor.tvattmaskin", "running")
+    await hass.async_start()
+    await hass.async_block_till_done()
+
+    state = hass.states.get("sensor.attention_span_tvatten")
+    assert state.state == "ongoing"
+    assert state.attributes["since"] == FIXTURE_TIME

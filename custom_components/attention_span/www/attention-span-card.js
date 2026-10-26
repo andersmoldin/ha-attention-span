@@ -1,19 +1,10 @@
 // AttentionSpan-kortet: visar AttentionSpan-entiteterna efter nivå.
-// All räknelogik finns i card-model.js.
+// All räknelogik och kortets texter finns i card-model.js.
 
 // Samma version som kortet laddades med, så att en uppdatering inte blandar
 // nytt kort med en gammal cachad card-model.js.
 const versionQuery = new URL(import.meta.url).search;
-const { cardModel } = await import(`./card-model.js${versionQuery}`);
-
-const STRINGS = {
-  en: { calm: "All is calm at home." },
-  sv: { calm: "Allt är lugnt hemma." },
-};
-
-function strings(hass) {
-  return STRINGS[hass.locale?.language ?? hass.language] ?? STRINGS.en;
-}
+const { NEEDS_ATTENTION, cardModel, strings } = await import(`./card-model.js${versionQuery}`);
 
 // Färger och typsnitt kommer från HA:s tema; storlekar och layout är fasta,
 // så att ett tema ändrar utseendet men inte var saker hamnar.
@@ -144,7 +135,7 @@ class AttentionSpanCard extends HTMLElement {
     this.shadowRoot
       .querySelector(".stack")
       .replaceChildren(
-        ...["alarm", "problem", "ongoing"].flatMap((level) =>
+        ...NEEDS_ATTENTION.flatMap((level) =>
           model[level].map((row) => noticeElement(row, level)),
         ),
         ...(rows.length ? [rowsCard] : []),

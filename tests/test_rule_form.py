@@ -5,7 +5,7 @@ from .conftest import add_integration, add_rule, level_modes, start_rule, start_
 
 YTTERDORREN = {"name": "Ytterdörren", "icon": "mdi:door", "entity": "binary_sensor.ytterdorr"}
 # En template som användaren skrev den, så att den kan visas igen i formuläret.
-DOOR_OPEN = {
+DOOR_OPEN_TEMPLATE = {
     "condition": "template",
     "value_template": "{{ is_state('binary_sensor.ytterdorr', 'on') }}",
 }
@@ -53,7 +53,7 @@ async def test_an_invalid_condition_is_rejected(hass: HomeAssistant):
     result = await submit(
         hass,
         result,
-        {"ongoing": [DOOR_OPEN], "hide": [{"condition": "state", "state": "on"}]},
+        {"ongoing": [DOOR_OPEN_TEMPLATE], "hide": [{"condition": "state", "state": "on"}]},
     )
 
     assert result["type"] is FlowResultType.FORM
@@ -70,7 +70,7 @@ async def test_changing_a_rule_shows_its_levels_and_conditions_as_written(hass: 
         "status",
         YTTERDORREN,
         levels={"ongoing": "condition", "quiet": "always"},
-        conditions={"ongoing": [DOOR_OPEN], "hide": hide},
+        conditions={"ongoing": [DOOR_OPEN_TEMPLATE], "hide": hide},
     )
 
     result = await start_rule_reconfigure(hass, entry, rule)
@@ -81,4 +81,4 @@ async def test_changing_a_rule_shows_its_levels_and_conditions_as_written(hass: 
     result = await submit(hass, result, level_modes({"ongoing": "condition", "quiet": "always"}))
 
     assert result["step_id"] == "conditions"
-    assert suggested(result) == {"ongoing": [DOOR_OPEN], "hide": hide}
+    assert suggested(result) == {"ongoing": [DOOR_OPEN_TEMPLATE], "hide": hide}

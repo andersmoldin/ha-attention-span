@@ -107,9 +107,11 @@ async def reconfigure_rule(
     """Ändra en Rule; levels och conditions som i add_rule."""
     result = await start_rule_reconfigure(hass, entry, subentry_id)
     result = await hass.config_entries.subentries.async_configure(result["flow_id"], fields)
+    assert result["step_id"] == "levels"
     result = await hass.config_entries.subentries.async_configure(
         result["flow_id"], level_modes(levels)
     )
+    assert result["step_id"] == "conditions"
     result = await hass.config_entries.subentries.async_configure(
         result["flow_id"], conditions or {}
     )

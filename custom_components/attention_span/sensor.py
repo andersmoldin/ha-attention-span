@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from functools import partial
 from typing import Any
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
@@ -9,6 +10,7 @@ from homeassistant.config_entries import ConfigEntry, ConfigSubentry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.restore_state import ExtraStoredData, RestoredExtraData, RestoreEntity
+from homeassistant.helpers.start import async_at_started
 from homeassistant.util import dt as dt_util
 from homeassistant.util import slugify
 
@@ -66,23 +68,27 @@ class RuleSensor(SensorEntity, RestoreEntity):
         await super().async_added_to_hass()
         # Går ett villkor inte att bygga, till exempel för att dess enhet har tagits bort,
         # loggar HA felet och visar regeln som otillgänglig.
-        rule = await RuleLevel.async_create(
+        evaluation = await RuleLevel.async_create(
             self.hass, self.entity_id, self._rule[CONF_LEVELS], self._rule.get(CONF_HIDE)
         )
-        self.async_on_remove(rule.async_unload)
-        self._evaluation = rule
-        self._attr_native_value = rule.evaluate()
-        # Regeln läses in på nytt vid varje omladdning; nivån har gällt sedan förra gången
-        # om det är samma regel på samma nivå.
+        self.async_on_remove(evaluation.async_unload)
+        self._evaluation = evaluation
         last = await self.async_get_last_extra_data()
-        if last is not None:
-            stored = last.as_dict()
-            if (
-                stored.get("rule") == self.unique_id
-                and stored.get("level") == self._attr_native_value
-            ):
-                self._attr_extra_state_attributes["since"] = stored["since"]
-        self.async_on_remove(await rule.async_track(self.hass, self._async_reevaluate))
+        stored = last.as_dict() if last is not None else {}
+        # Under en omstart finns entiteterna i villkoren först när deras integrationer har
+        # laddats, så nivån räknas ut när HA har startat.
+        self.async_on_remove(
+            async_at_started(self.hass, partial(self._async_start, stored))
+        )
+
+    async def _async_start(self, stored: dict[str, Any], hass: HomeAssistant) -> None:
+        self._attr_native_value = self._evaluation.evaluate()
+        # Regeln läses in på nytt vid varje omladdning och omstart; nivån har gällt sedan
+        # förra gången om det är samma regel på samma nivå.
+        if stored.get("rule") == self.unique_id and stored.get("level") == self._attr_native_value:
+            self._attr_extra_state_attributes["since"] = stored["since"]
+        self.async_write_ha_state()
+        self.async_on_remove(await self._evaluation.async_track(hass, self._async_reevaluate))
 
     @callback
     def _async_reevaluate(self) -> None:

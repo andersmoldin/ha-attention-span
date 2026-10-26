@@ -31,7 +31,7 @@ POLL_INTERVAL = timedelta(seconds=1)
 async def async_validate_conditions(hass: HomeAssistant, conditions: list[Any]) -> list[Any]:
     """Kontrollera villkor som HA gör för automationer.
 
-    Ger probatio.Invalid eller HomeAssistantError för ogiltiga villkor. Indata ändras inte,
+    Ger vol.Invalid eller HomeAssistantError för ogiltiga villkor. Indata ändras inte,
     så att villkoren kan sparas som användaren skrev dem.
     """
     validated = cv.CONDITIONS_SCHEMA(copy.deepcopy(conditions))
@@ -46,9 +46,9 @@ async def _async_checker(hass: HomeAssistant, conditions: list[Any]) -> Conditio
 
 
 class RuleLevel:
-    """Räknar fram en Rules nivå ur dess nivåvillkor och Dölj när.
+    """Räknar fram en Rules nivå ur dess nivåvillkor och dölj-villkor.
 
-    Den allvarligaste nivån vars villkor gäller vinner, oavsett ordning, och Dölj när
+    Den allvarligaste nivån vars villkor gäller vinner, oavsett ordning, och dölj-villkoret
     slår allt. Gäller inget är regeln dold.
     """
 
@@ -74,7 +74,7 @@ class RuleLevel:
     ) -> RuleLevel:
         """Bygg villkoren ur regelns konfiguration.
 
-        Ger probatio.Invalid eller HomeAssistantError om ett villkor inte går att bygga.
+        Ger vol.Invalid eller HomeAssistantError om ett villkor inte går att bygga.
         """
         checkers: dict[str, ConditionChecker | None] = {}
         for level, value in levels.items():

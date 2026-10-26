@@ -212,7 +212,7 @@ class RuleSubentryFlow(ConfigSubentryFlow):
     async def async_step_conditions(
         self, user_input: dict[str, Any] | None = None
     ) -> SubentryFlowResult:
-        """Villkoren för nivåerna med Villkor, och Dölj när."""
+        """Villkoren för nivåerna med Villkor, och dölj-villkoret («Dölj när»)."""
         with_condition = [level for level in LEVELS if self._modes.get(level) == LEVEL_CONDITION]
         errors: dict[str, str] = {}
         if user_input is not None:
