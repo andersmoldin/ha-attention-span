@@ -1,0 +1,539 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AttentionSpan – Rule, Level conditions och Q9</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=Noto+Color+Emoji&display=swap">
+<style>
+/* Tokens från designrunda 2 («Det som är viktigt nu», vanilla) */
+*, *::before, *::after { box-sizing: border-box; }
+:root {
+  color-scheme: light;
+  --bg: #f3f2ee; --surface: #ffffff; --surface-2: #e9e8e2;
+  --ink: #1a1a19; --ink-2: #5b5a55; --ink-3: #8a8982; --line: #dddcd4;
+  --accent: #1c5cab; --accent-ink: #ffffff; --accent-soft: rgba(28, 92, 171, .10);
+  --good: #0ca30c; --warn: #c98500; --bad: #d03b3b;
+  --ha: #03a9f4;
+  --radius: 14px;
+  --shadow: 0 1px 2px rgba(0,0,0,.05), 0 8px 24px rgba(0,0,0,.06);
+  --font: "Roboto", "Noto Color Emoji", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font); font-size: 15px; line-height: 1.5; -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+:where(p, h1, h2, h3, h4, li, dd, td, th) { overflow-wrap: anywhere; }
+button { font: inherit; color: inherit; cursor: pointer; }
+code, .mono { font-family: var(--mono); font-size: 12.5px; }
+.wrap { max-width: 1320px; margin: 0 auto; padding: 0 16px 80px; }
+@media (min-width: 720px) { .wrap { padding: 0 28px 80px; } }
+
+header.top { padding: 32px 0 8px; }
+.eyebrow { font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); font-weight: 500; }
+h1 { font-size: clamp(26px, 3.6vw, 40px); line-height: 1.1; margin: 8px 0 10px; font-weight: 500; letter-spacing: -.02em; }
+h1 em { font-style: normal; color: var(--ink-3); font-weight: 400; }
+.lede { max-width: 820px; color: var(--ink-2); margin: 0; }
+h2.sec { font-size: 24px; font-weight: 500; letter-spacing: -.015em; margin: 48px 0 4px; display: flex; gap: 10px; align-items: baseline; }
+h2.sec .n { font-size: 13px; color: var(--ink-3); font-weight: 500; letter-spacing: .08em; }
+.sub { color: var(--ink-2); margin: 0 0 18px; max-width: 820px; }
+
+/* Flöde */
+.flow { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 20px 0 0; }
+@media (max-width: 860px) { .flow { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
+.flow > div { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; position: relative; }
+.flow b { display: block; font-weight: 500; }
+.flow small { color: var(--ink-2); font-size: 13px; display: block; line-height: 1.4; margin-top: 2px; }
+.flow .k { font-size: 11px; letter-spacing: .1em; color: var(--ink-3); font-weight: 700; }
+
+/* Nivåtaggar */
+.tag { display: inline-block; font-size: 10.5px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; padding: 2px 7px; border-radius: 6px; text-align: center; white-space: nowrap; }
+.tag.alarm { background: #d03b3b; color: #fff; }
+.tag.problem { background: #f5b942; color: #2a1d00; }
+.tag.ongoing { background: var(--accent); color: #fff; }
+.tag.glance { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
+.tag.quiet { background: var(--surface-2); color: var(--ink-2); }
+.tag.hidden { background: transparent; color: var(--ink-3); border: 1px dashed var(--ink-3); }
+.tag.hide { background: #3b3a36; color: #fff; }
+
+/* ---------- HA-dialog (konfiguration) ---------- */
+.cfg-layout { display: grid; grid-template-columns: minmax(0, 560px) minmax(0, 1fr); gap: 24px; align-items: start; }
+@media (max-width: 1000px) { .cfg-layout { grid-template-columns: minmax(0, 1fr); } }
+.tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+.tabs button { border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 6px 12px; font-size: 13.5px; }
+.tabs button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.dlg { background: var(--surface); border-radius: 28px; box-shadow: 0 2px 6px rgba(0,0,0,.08), 0 18px 40px rgba(0,0,0,.10); overflow: hidden; }
+.dlg-h { display: flex; align-items: center; gap: 12px; padding: 18px 20px 12px; }
+.dlg-h .x { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; color: var(--ink-2); font-size: 20px; }
+.dlg-h b { font-size: 20px; font-weight: 400; flex: 1; }
+.dlg-b { padding: 0 20px 8px; display: flex; flex-direction: column; gap: 14px; }
+.fld { position: relative; border: 1px solid #9e9e9e; border-radius: 4px; padding: 14px 12px 10px; min-height: 52px; }
+.fld > label { position: absolute; top: -8px; left: 9px; background: var(--surface); padding: 0 4px; font-size: 12px; color: var(--ink-2); }
+.fld .val { font-size: 15px; }
+.fld .help { font-size: 12px; color: var(--ink-3); margin-top: 4px; }
+.row2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+.grp-h { font-size: 14px; font-weight: 500; margin: 6px 0 -4px; display: flex; align-items: center; gap: 8px; }
+.grp-h small { font-weight: 400; color: var(--ink-3); font-size: 12.5px; }
+.lc { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 10px; align-items: start; }
+.lc .tag { margin-top: 10px; }
+.cond { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.cond-h { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: #f6f6f6; font-size: 13px; font-weight: 500; }
+.cond-h .dots { margin-left: auto; color: var(--ink-3); letter-spacing: 1px; }
+.cond-b { padding: 8px 12px 10px; font-size: 13.5px; color: var(--ink-2); line-height: 1.5; }
+.cond-b b { color: var(--ink); font-weight: 500; }
+.cond-b code { color: var(--ink); background: var(--surface-2); padding: 1px 5px; border-radius: 5px; font-size: 12px; }
+.cond.empty { border-style: dashed; padding: 9px 12px; font-size: 13.5px; color: var(--ha); font-weight: 500; }
+.cond.live-on, .avail.live-on { box-shadow: 0 0 0 2px var(--good); }
+.avail { border: 1px solid #9e9e9e; border-radius: 4px; padding: 8px 12px; font-size: 14px; }
+.avail.off { color: var(--ink-3); border-color: var(--line); }
+.lc-stack { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+a.inh { display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; border: 1px solid var(--line); background: #f6f8fb; border-radius: 10px; padding: 7px 12px; font-size: 13px; color: var(--ink-2); text-decoration: none; }
+a.inh b { color: var(--ink); font-weight: 500; }
+a.inh span { margin-left: auto; color: var(--ha); font-weight: 500; }
+ol.prio { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+ol.prio li { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 8px; font-size: 14px; color: var(--ink-2); }
+ol.prio li i { font-style: normal; width: 18px; color: var(--ink-3); font-size: 12px; }
+ol.prio li small { color: var(--ink-3); font-size: 11.5px; }
+ol.prio li.me { background: color-mix(in srgb, var(--ha) 12%, transparent); color: var(--ink); font-weight: 500; }
+ol.prio .mv { margin-left: auto; display: flex; gap: 4px; }
+ol.prio .mv button { border: 1px solid var(--line); background: var(--surface); border-radius: 6px; width: 28px; height: 26px; font-size: 11px; }
+ol.prio .mv button:disabled { opacity: .35; cursor: default; }
+.alt { display: flex; gap: 4px; margin-top: 6px; }
+.alt span { border: 1px solid var(--line); border-radius: 8px; padding: 3px 10px; font-size: 12.5px; background: var(--bg); }
+.alt span.on { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.av-row { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr); gap: 10px; align-items: center; font-size: 14px; }
+.av-head { font-size: 12px; margin-bottom: -6px; }
+.fld .preview { margin-top: 8px; padding: 6px 10px; background: var(--surface-2); border-radius: 8px; font-size: 13px; color: var(--ink-2); }
+.fld .preview b { color: var(--ink); font-weight: 500; }
+.dlg-f { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 20px 18px; }
+.habtn { border: 0; background: none; color: var(--ha); font-weight: 500; padding: 8px 14px; border-radius: 20px; }
+.habtn.fill { background: var(--ha); color: #fff; }
+.notes { display: flex; flex-direction: column; gap: 10px; }
+.note { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; font-size: 14px; color: var(--ink-2); }
+.note b { color: var(--ink); font-weight: 500; }
+.note.open { border-color: var(--warn); background: color-mix(in srgb, var(--warn) 7%, var(--surface)); }
+
+/* ---------- Scen: kontroller + telefon + utvärdering ---------- */
+.stage { display: grid; grid-template-columns: minmax(0, 300px) 380px minmax(0, 1fr); gap: 22px; align-items: start; }
+@media (max-width: 1180px) { .stage { grid-template-columns: minmax(0, 1fr) 380px; } .stage .eval { grid-column: 1 / -1; } }
+@media (max-width: 760px) { .stage { grid-template-columns: minmax(0, 1fr); justify-items: center; } .stage > * { width: 100%; max-width: 420px; } }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; }
+.panel h3 { margin: 0 0 10px; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); font-weight: 500; }
+.ctl { padding: 8px 0; border-bottom: 1px dashed var(--line); }
+.ctl:last-child { border: 0; }
+.ctl > span { display: block; font-size: 13.5px; font-weight: 500; margin-bottom: 5px; }
+.seg { display: flex; flex-wrap: wrap; gap: 4px; }
+.seg button { border: 1px solid var(--line); background: var(--bg); border-radius: 8px; padding: 4px 9px; font-size: 12.5px; }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.eval table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.eval td { padding: 4px 6px 4px 0; vertical-align: top; }
+.eval tr.rh td { padding-top: 12px; font-weight: 500; font-size: 14px; border-top: 1px solid var(--line); }
+.eval tr.rh:first-child td { border-top: 0; padding-top: 0; }
+.eval .ok { color: var(--good); font-weight: 700; }
+.eval .no { color: var(--ink-3); }
+.eval .win td { background: color-mix(in srgb, var(--good) 9%, transparent); }
+.eval .res { text-align: right; }
+
+/* Telefon */
+.frame { position: relative; background: #0a0a0a; padding: 10px; box-shadow: var(--shadow); border-radius: 42px; width: 380px; max-width: 100%; height: 760px; }
+.frame.sm { width: 340px; height: 680px; }
+.screen { position: relative; width: 100%; height: 100%; overflow: hidden; border-radius: 32px; }
+.notch { position: absolute; top: 16px; left: 50%; transform: translateX(-50%); width: 92px; height: 24px; border-radius: 14px; background: #000; z-index: 9; }
+.dash { --d-bg: #0e1116; --d-card: #161a21; --d-card-2: #1f242d; --d-text: #eceff4; --d-text-2: #8f98a8; --d-text-3: #5e6675; --d-line: rgba(255,255,255,.07);
+  --amber: #f5b942; --red: #ff6b6b; --red-bg: #3a1417; --green: #4ade80; --blue: #5aa9ff; --r: 20px;
+  position: absolute; inset: 0; overflow-y: auto; scrollbar-width: none; background: var(--d-bg); color: var(--d-text); font-size: 14px; line-height: 1.35; padding: 48px 14px 20px; display: flex; flex-direction: column; gap: 10px; }
+.dash::-webkit-scrollbar { display: none; }
+.d-top b { display: block; font-size: 20px; font-weight: 500; }
+.d-top small { color: var(--d-text-2); font-size: 12.5px; }
+.lvl-lbl { font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--d-text-3); margin: 4px 0 -4px 4px; font-weight: 500; }
+.card { background: var(--d-card); border-radius: var(--r); padding: 14px 14px 14px 16px; }
+.card .row { display: flex; align-items: center; gap: 12px; }
+.card .ico { width: 42px; height: 42px; border-radius: 14px; flex: none; display: grid; place-items: center; font-size: 22px; background: color-mix(in srgb, var(--c, var(--blue)) 18%, transparent); }
+.card .tx { flex: 1; min-width: 0; }
+.card .tx b { display: block; font-size: 16px; font-weight: 500; }
+.card .tx small { display: block; color: var(--d-text-2); font-size: 13px; margin-top: 2px; }
+.card .acts { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+.dbtn { border: 0; border-radius: 12px; height: 38px; padding: 0 14px; background: var(--d-card-2); color: var(--d-text); font-size: 13.5px; font-weight: 500; }
+.dbtn.pri { background: var(--c, var(--blue)); color: #0e1116; }
+.bar { height: 6px; border-radius: 3px; background: var(--d-card-2); margin-top: 12px; position: relative; }
+.bar i { position: absolute; left: 0; top: 0; bottom: 0; width: var(--v); border-radius: 3px; background: var(--c, var(--blue)); }
+.card.problem { --c: var(--amber); background: color-mix(in srgb, var(--amber) 9%, var(--d-card)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 35%, transparent); }
+.card.auto .src { font-size: 11px; color: var(--amber); letter-spacing: .06em; text-transform: uppercase; margin-top: 8px; }
+.card.alarm { --c: var(--red); background: var(--red-bg); box-shadow: inset 0 0 0 2px var(--red); padding: 18px 16px; }
+.card.alarm .ico { width: 54px; height: 54px; border-radius: 18px; background: var(--red); font-size: 28px; animation: pulse 1.6s ease-in-out infinite; }
+.card.alarm .tx b { font-size: 20px; color: var(--red); }
+.card.alarm .tx small { color: var(--d-text); }
+.card.alarm .noaside { font-size: 12px; color: var(--d-text-2); margin-top: 10px; }
+.card.alarm.acked { padding: 12px 14px; box-shadow: inset 0 0 0 1px var(--red); }
+.card.alarm.acked .ico { width: 42px; height: 42px; font-size: 22px; animation: none; }
+.card.alarm.acked .tx b { font-size: 16px; }
+@keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--red) 60%, transparent); } 50% { box-shadow: 0 0 0 10px transparent; } }
+@media (prefers-reduced-motion: reduce) { .card.alarm .ico { animation: none; } }
+.ongoing { --c: var(--blue); }
+.glance { display: flex; gap: 6px; flex-wrap: wrap; }
+.g { display: inline-flex; align-items: center; gap: 7px; background: var(--d-card); border-radius: 14px; padding: 9px 12px; font-size: 15px; font-weight: 500; min-height: 44px; }
+.g small { font-size: 12.5px; font-weight: 400; color: var(--d-text-2); }
+.quiet { display: flex; flex-direction: column; gap: 0; }
+.q { display: flex; align-items: center; gap: 10px; color: var(--d-text-2); font-size: 13px; padding: 7px 4px; }
+.q em { font-style: normal; color: var(--d-text); font-weight: 500; }
+.calm { display: flex; align-items: center; gap: 10px; color: var(--d-text-2); font-size: 13.5px; padding: 6px 4px; }
+.calm i { width: 9px; height: 9px; border-radius: 50%; background: var(--green); }
+
+/* Q9 */
+.q9 { display: grid; grid-template-columns: 340px 340px minmax(0, 1fr); gap: 22px; align-items: start; }
+@media (max-width: 1180px) { .q9 { grid-template-columns: 340px 340px; } .q9 .q9-side { grid-column: 1 / -1; } }
+@media (max-width: 760px) { .q9 { grid-template-columns: minmax(0, 1fr); justify-items: center; } }
+.cap { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); font-weight: 500; margin: 0 0 8px 6px; }
+.cap b { color: var(--ink); }
+.cmp { width: 100%; border-collapse: collapse; font-size: 13.5px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+.cmp th, .cmp td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.cmp th { font-weight: 500; color: var(--ink-3); font-size: 12px; letter-spacing: .06em; text-transform: uppercase; }
+.cmp tr:last-child td { border-bottom: 0; }
+
+/* Formulär */
+form.fb { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; display: grid; gap: 12px; margin-top: 16px; }
+form.fb legend, form.fb .lg { font-weight: 500; }
+form.fb .opts { display: flex; flex-wrap: wrap; gap: 8px; }
+form.fb label.o { display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); font-size: 14px; cursor: pointer; }
+form.fb label.o:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+form.fb textarea { width: 100%; min-height: 80px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); padding: 10px 12px; font: inherit; }
+.btn { border: 0; border-radius: 10px; padding: 10px 16px; font-weight: 500; background: var(--accent); color: #fff; justify-self: start; }
+.st { font-size: 13px; color: var(--ink-3); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <div class="eyebrow">AttentionSpan · grillning runda 5</div>
+  <h1>En Rule = ett villkor per nivå, <em>och den allvarligaste vinner</em></h1>
+  <p class="lede">Utkast för Q7: hur en Rule konfigureras och hur Notices ritas. Längre ner finns prototypen för Q9: Blick + Tyst som två nivåer eller en. Alla delar använder samma tillstånd, så ändra scenariot och se både bedömningen och skärmen ändras.</p>
+  <div class="flow">
+    <div><span class="k">1</span><b>Kolla alla nivåvillkor</b><small>Varje Level condition i regeln utvärderas. Ordningen spelar ingen roll.</small></div>
+    <div><span class="k">2</span><b>Allvarligast vinner</b><small>Larm &gt; Problem &gt; Pågår &gt; Blick &gt; Tyst. Inget uppfyllt ger Hidden.</small></div>
+    <div><span class="k">3</span><b>Dölj-villkor slår allt</b><small>Om Hide condition är uppfyllt blir regeln Hidden, oavsett nivå.</small></div>
+    <div><span class="k">4</span><b>Kvitterat larm blir kompakt</b><small>Ligger kvar tills villkoret släpper eller 24 h har gått (standard).</small></div>
+  </div>
+</header>
+
+<!-- ============ 1. Konfiguration ============ -->
+<h2 class="sec"><span class="n">1</span>Konfigurera en Rule</h2>
+<p class="sub">Så här kan en config subentry-dialog i Home Assistant se ut. Villkorsrutorna är HA:s egen villkorsväljare. Den gröna ramen visar vilka villkor som är uppfyllda i scenariot nedan just nu.</p>
+<div class="cfg-layout">
+  <div>
+    <div class="tabs" id="cfgTabs"></div>
+    <div class="dlg" id="cfgDlg"></div>
+  </div>
+  <div class="notes">
+    <div class="note"><b>En rad per nivå, inte en lista med steg.</b> Tomma nivåer visar bara «+ Lägg till villkor». Behöver du flera villkor för samma nivå kombinerar du dem med HA:s <i>Eller</i>-villkor (se Tvätten).</div>
+    <div class="note"><b>«Alltid»</b> är ett eget val i stället för ett villkor (se Sophämtning). HA saknar ett inbyggt «alltid sant»-villkor.</div>
+    <div class="note"><b>Kvittering</b> visas bara om Larm har ett villkor. «Larma igen efter» är 24 h som standard (Q10).</div>
+    <div class="note"><b>Typ först</b> (din feedback): typen styr vilka entitetsfält och orsaksmallar som visas, ungefär som när man väljer korttyp i HA.</div>
+    <div class="note"><b>Orsak</b> (din feedback): välj en färdig mall för typen eller «Egen template…». Förhandsvisningen visar texten med dagens värden. Byt scenario nedan och se den ändras.</div>
+    <div class="note"><b>Otillgänglighet</b> ställs in på en egen sida (1b nedan) men <b>syns här</b> (din feedback). Under Findus Larm och Problem visas raden «Från Tillgänglighet», som länkar dit.</div>
+    <div class="note"><b>Ordning i stället för «40»</b> (din feedback, rekommenderat i dialogen): en lista med regler som kan dela nivå, där du flyttar regeln upp eller ner. Prova pilarna och se kortet ändras. Två andra förslag:
+      <div style="margin-top:8px"><b>B · tre lägen:</b></div><div class="alt"><span>Låg</span><span class="on">Normal</span><span>Hög</span></div>
+      <div style="margin-top:8px"><b>C · före/efter:</b> «Visa före <u>Tvätten</u> ▾». Kort, men du ser bara en granne.</div></div>
+    <div class="note open"><b>Öppen fråga:</b> ska Orsak och Åtgärder kunna anges <i>per nivå</i>? Findus kan till exempel ha «Starta om» bara på Problem. Det tar vi i en senare runda.</div>
+  </div>
+</div>
+
+<h2 class="sec"><span class="n">1b</span>Inställningar: Tillgänglighet</h2>
+<p class="sub">En egen sida (din feedback), inte en del av varje Rule. Här väljer du vad som blir Problem eller Larm när det inte går att nå, och efter hur lång tid. Grön ram betyder aktiv i scenariot.</p>
+<div class="cfg-layout">
+  <div class="dlg" id="availPage"></div>
+  <div class="notes">
+    <div class="note"><b>Integrationer</b> bevakas utan att du gör något, med undantagslistan från research-dokumentet.</div>
+    <div class="note"><b>Enheter</b> är opt-in. En enhet i stället för en entitet, eftersom en enhet har många entiteter som går ner samtidigt.</div>
+    <div class="note open"><b>Öppen fråga (Q16):</b> Findus städar och tappar sedan anslutningen. Ska Findus-regeln och Tillgänglighet ge två Notices, eller en?</div>
+  </div>
+</div>
+
+<!-- ============ 2. Skärm ============ -->
+<h2 class="sec"><span class="n">2</span>Så blir det på skärmen</h2>
+<p class="sub">Ändra scenariot till vänster. I mitten syns kortet med Notices, till höger varför varje Rule hamnade där den hamnade. Prova: läcka → kvittera → stoppa läckan.</p>
+<div class="stage">
+  <div class="panel" id="controls"><h3>Scenario</h3></div>
+  <div class="frame"><div class="notch"></div><div class="screen"><div class="dash" id="dashMain"></div></div></div>
+  <div class="panel eval"><h3>Bedömning per Rule</h3><table id="evalTbl"></table></div>
+</div>
+
+<form class="fb" data-lavish-question="q7-utkast" onsubmit="event.preventDefault(); const t = this.querySelector('textarea').value.trim(); if (t) { window.lavish && window.lavish.queuePrompt('Q7-utkast, feedback: ' + t, { tag: 'q7', text: 'Q7: ' + t.slice(0, 80), element: this, data: { question: 'q7', answer: t } }); this.querySelector('.st').textContent = 'Köad. Tryck Send to Agent när du är klar.'; }">
+  <span class="lg">Q7: stämmer konfigurationen och skärmen? Vad skaver?</span>
+  <textarea name="q7" placeholder="T.ex. 'Dölj när borde heta …' eller 'Orsak per nivå behövs'"></textarea>
+  <button class="btn" type="submit">Köa svar</button>
+  <span class="st"></span>
+</form>
+
+<!-- ============ 3. Q9 ============ -->
+<h2 class="sec"><span class="n">3</span>Q9: Blick + Tyst, eller en nivå?</h2>
+<p class="sub">Samma Notices, två modeller. Till vänster bestämmer <b>nivån</b> var och hur något ritas. Till höger finns bara en nivå, och då bestämmer <b>typen</b> (Rad eller Lista) hur det ritas och <b>prioriteten</b> i vilken ordning.</p>
+<div class="q9">
+  <div><p class="cap"><b>A</b> · Blick och Tyst</p><div class="frame sm"><div class="notch"></div><div class="screen"><div class="dash" id="dashA"></div></div></div></div>
+  <div><p class="cap"><b>B</b> · en nivå, sorterad på prioritet</p><div class="frame sm"><div class="notch"></div><div class="screen"><div class="dash" id="dashB"></div></div></div></div>
+  <div class="q9-side">
+    <table class="cmp">
+      <tr><th></th><th>A · två nivåer</th><th>B · en nivå</th></tr>
+      <tr><td>Vem bestämmer utseendet?</td><td>Nivån</td><td>Typen</td></tr>
+      <tr><td>Elpris (Rad-typ, låg prio)</td><td>Hamnar i Tyst, ritas som rad längst ner</td><td>Blir en chip mitt i listan, mellan bussar och sopor</td></tr>
+      <tr><td>Antal begrepp att lära sig</td><td>5 nivåer</td><td>4 nivåer, men typen gör mer jobb</td></tr>
+      <tr><td>Risk</td><td>Svårt att veta var gränsen mellan Blick och Tyst går</td><td>Blandad ordning när typer och prioriteter korsar varandra</td></tr>
+      <tr><td>Automationer och röst</td><td>«Vad är Blick?» ger hemmets läge</td><td>Kan inte skilja hemmets läge från bakgrundsinfo</td></tr>
+    </table>
+    <form class="fb" data-lavish-question="q9" onsubmit="event.preventDefault(); const f = new FormData(this); const c = f.get('q9'); const t = (f.get('why') || '').trim(); if (c) { window.lavish && window.lavish.queuePrompt('Q9: ' + c + (t ? '. Skillnad/motivering: ' + t : ''), { tag: 'q9', text: 'Q9: ' + c, element: this, data: { question: 'q9', answer: c, why: t } }); this.querySelector('.st').textContent = 'Köad. Tryck Send to Agent när du är klar.'; }">
+      <span class="lg">Testet: kan du säga vad som skiljer Blick från Tyst utan att nämna utseendet?</span>
+      <div class="opts">
+        <label class="o"><input type="radio" name="q9" value="A – behåll Blick och Tyst"> A · behåll båda</label>
+        <label class="o"><input type="radio" name="q9" value="B – slå ihop till en nivå"> B · slå ihop</label>
+      </div>
+      <textarea name="why" placeholder="Skillnaden är … (t.ex. 'Blick är hemmets tillstånd, Tyst är info utifrån')"></textarea>
+      <button class="btn" type="submit">Köa svar</button>
+      <span class="st"></span>
+    </form>
+  </div>
+</div>
+
+</div>
+<script>
+const ORDER = ['alarm', 'problem', 'ongoing', 'glance', 'quiet'];
+const SV = { alarm: 'Larm', problem: 'Problem', ongoing: 'Pågår', glance: 'Blick', quiet: 'Tyst', hidden: 'Dold', hide: 'Dölj när' };
+
+const S = { leak: false, wet: false, findus: 'docked', door: 'closed', airing: false, wash: 'running', binEve: false, nibe: false };
+const acked = {};
+
+const CONTROLS = [
+  { key: 'leak', label: 'Läckagegivare tvättstuga', opts: [[false, 'Torr'], [true, 'Läcka']] },
+  { key: 'wet', label: 'Fukt i tvättstugan', opts: [[false, '45 %'], [true, '78 %']] },
+  { key: 'findus', label: 'Findus (robotdammsugare)', opts: [['docked', 'Dockad'], ['cleaning', 'Städar'], ['error', 'Fastnat'], ['off30', 'Offline 30 min'], ['off3h', 'Offline 3 h']] },
+  { key: 'door', label: 'Ytterdörren', opts: [['closed', 'Stängd'], ['open2', 'Öppen 2 min'], ['open10', 'Öppen 10 min']] },
+  { key: 'airing', label: 'Vädring (input_boolean)', opts: [[false, 'Av'], [true, 'På']] },
+  { key: 'wash', label: 'Tvättmaskinen', opts: [['off', 'Av'], ['running', 'Kör'], ['done', 'Klar, ej urplockad']] },
+  { key: 'binEve', label: 'Sophämtning', opts: [[false, 'Om 3 dagar'], [true, 'I morgon, kväll nu']] },
+  { key: 'nibe', label: 'Nibe-integrationen', opts: [[false, 'Laddad'], [true, 'Kunde inte laddas']] },
+];
+
+const cond = (kind, body, test) => ({ kind, body, test });
+const RULES = [
+  { id: 'vatten', name: 'Vatten i tvättstugan', icon: '💧', prio: 90, device: 'Läckagegivare tvättstuga', type: 'Larm', ents: 'binary_sensor.lacka_tvattstuga, sensor.fukt_tvattstuga',
+    reason: "{{ 'Läcka i tvättstugan' if this.state == 'alarm' else 'Torkar – ' ~ states('sensor.fukt_tvattstuga') ~ ' % fukt' }}",
+    preview: () => S.leak ? 'Läcka i tvättstugan' : S.wet ? 'Torkar – 78 % fukt' : null,
+    lc: { alarm: cond('Tillstånd', '<code>binary_sensor.lacka_tvattstuga</code> är <b>Fukt</b>', s => s.leak),
+          ongoing: cond('Numeriskt tillstånd', '<code>sensor.fukt_tvattstuga</code> över <b>70 %</b>', s => s.wet) },
+    text: lv => lv === 'alarm' ? ['Läcka i tvättstugan', 'Givaren vid tvättmaskinen sedan 20:11'] : ['Tvättstugan torkar', '78 % fukt · sjunker'] },
+  { id: 'findus', name: 'Findus', icon: '🤖', prio: 40, device: 'Findus', type: 'Öppen/på med åtgärd', ents: 'vacuum.findus', actions: 'Starta om (button.findus_restart)',
+    preset: '{tillstånd} sedan {tid}', preview: () => S.findus === 'cleaning' ? 'Städar sedan 12 min' : S.findus === 'error' ? 'Fastnat sedan 20:02' : null,
+    lc: { problem: cond('Tillstånd', '<code>vacuum.findus</code> är <b>Fel</b>', s => s.findus === 'error'),
+          ongoing: cond('Tillstånd', '<code>vacuum.findus</code> är <b>Städar</b>', s => s.findus === 'cleaning') },
+    text: lv => lv === 'problem' ? ['Findus har fastnat', 'Under soffan · sedan 20:02'] : ['Findus städar', 'Köket · 12 min'] },
+  { id: 'door', name: 'Ytterdörren', icon: '🚪', prio: 70, type: 'Öppen/på med åtgärd', ents: 'binary_sensor.ytterdorr',
+    preset: 'Öppen i {tid}', preview: () => S.door === 'open10' ? 'Öppen i 10 min' : S.door === 'open2' ? 'Öppen i 2 min' : null,
+    lc: { problem: cond('Tillstånd', '<code>binary_sensor.ytterdorr</code> är <b>Öppen</b> i <b>00:05:00</b>', s => s.door === 'open10'),
+          ongoing: cond('Tillstånd', '<code>binary_sensor.ytterdorr</code> är <b>Öppen</b>', s => s.door !== 'closed') },
+    hide: cond('Tillstånd', '<code>input_boolean.vadring</code> är <b>På</b>', s => s.airing),
+    text: lv => ['Ytterdörren är öppen', S.door === 'open10' ? 'Öppen i 10 min' : 'Öppen i 2 min'] },
+  { id: 'tvatt', name: 'Tvätten', icon: '🧺', prio: 50, type: 'Förlopp', ents: 'sensor.tvatt_kvar, sensor.tvatt_status',
+    preset: '{tid} kvar · Klar sedan {tid}', preview: () => S.wash === 'done' ? 'Klar sedan 3 h' : S.wash === 'running' ? '40 min kvar' : null,
+    lc: { ongoing: cond('Eller', '<code>sensor.tvatt_status</code> är <b>Kör</b><br><i>eller</i> <code>sensor.tvatt_status</code> är <b>Klar</b> och <code>input_boolean.tvatt_urplockad</code> är <b>Av</b>', s => s.wash !== 'off') },
+    text: lv => S.wash === 'done' ? ['Tvätten är klar', 'Klar sedan 3 h · plocka ur'] : ['Tvätten', '40 min kvar · 60° bomull'] },
+  { id: 'sopor', name: 'Sophämtning', icon: '🗑️', prio: 20, type: 'Lista', ents: 'calendar.sophamtning',
+    preset: 'Nästa: {händelse}', preview: () => S.binEve ? 'Nästa: i morgon 06:30' : 'Nästa: mån 06:30',
+    lc: { ongoing: cond('Och', '<code>calendar.sophamtning</code> startar inom <b>24 h</b><br><i>och</i> tid efter <b>18:00</b>', s => s.binEve),
+          quiet: cond('Alltid', '<b>Alltid</b>', s => true) },
+    text: lv => lv === 'ongoing' ? ['Ställ ut soptunnan', 'Hämtning i morgon 06:30'] : ['Sopor', 'mån'] },
+  { id: 'bil', name: 'Bilen', icon: '🚗', prio: 60, type: 'Rad', ents: 'sensor.bil_batteri', lc: { glance: cond('Alltid', '<b>Alltid</b>', s => true) }, text: () => ['52 %', 'laddar'] },
+  { id: 'inne', name: 'Inne', icon: '🌡️', prio: 55, type: 'Rad', ents: 'sensor.inne_temp', lc: { glance: cond('Alltid', '<b>Alltid</b>', s => true) }, text: () => ['21,4°', 'inne'] },
+  { id: 'el', name: 'Elpris', icon: '⚡', prio: 30, type: 'Rad', ents: 'sensor.elpris', lc: { quiet: cond('Alltid', '<b>Alltid</b>', s => true) }, text: () => ['42 öre', 'elpris nu'] },
+  { id: 'buss', name: 'Buss 3', icon: '🚌', prio: 40, type: 'Lista', ents: 'sensor.buss_3_avgangar', lc: { quiet: cond('Alltid', '<b>Alltid</b>', s => true) }, text: () => ['Buss 3', '7 min · 19 min · 31 min'] },
+];
+// Tillgänglighet: ställs in på en egen sida, inte per Rule. Utvärderas på samma sätt.
+const WATCHES = [
+  { id: 'w-findus', name: 'Findus', icon: '🤖', prio: 40, lc: {}, kind: 'Enhet',
+    avail: { alarm: { after: '2 h', test: s => s.findus === 'off3h' }, problem: { after: '30 min', test: s => s.findus === 'off30' || s.findus === 'off3h' } },
+    text: lv => ['Findus är offline', s_findusTime()] },
+  { id: 'w-lacka', name: 'Läckagegivare tvättstuga', icon: '💧', prio: 80, lc: {}, kind: 'Enhet',
+    avail: { problem: { after: '15 min', test: s => false } }, text: () => ['Läckagegivaren svarar inte', 'Sedan 15 min'] },
+  { id: 'w-nibe', name: 'Nibe', icon: '🔌', prio: 50, lc: {}, kind: 'Integration',
+    avail: { problem: { after: 'direkt', test: s => s.nibe } }, text: () => ['Nibe kunde inte laddas', 'Värmepumpens integration har inte svarat sedan 19:40'] },
+];
+const ALL = [...RULES, ...WATCHES];
+function s_findusTime() { return S.findus === 'off3h' ? 'Offline sedan 3 h · senast i köket' : 'Offline sedan 30 min'; }
+
+function evaluate(r) {
+  const hits = ORDER.filter(lv => (r.lc[lv] && r.lc[lv].test(S)) || (r.avail && r.avail[lv] && r.avail[lv].test(S)));
+  const hidden = r.hide && r.hide.test(S);
+  let level = hidden ? 'hidden' : (hits[0] || 'hidden');
+  if (level !== 'alarm') delete acked[r.id];
+  return { level, hits, hidden };
+}
+
+const CFG_IDS = ['vatten', 'findus', 'door', 'tvatt', 'sopor'];
+let cfgSel = 'findus';
+function renderCfg() {
+  document.getElementById('cfgTabs').innerHTML = CFG_IDS.map(id => {
+    const r = RULES.find(x => x.id === id);
+    return `<button type="button" aria-pressed="${id === cfgSel}" onclick="cfgSel='${id}';renderCfg()">${r.icon} ${r.name}</button>`;
+  }).join('');
+  const r = RULES.find(x => x.id === cfgSel);
+  const watch = WATCHES.find(w => w.name === r.device);
+  const lcRow = lv => {
+    const c = r.lc[lv];
+    const box = c
+      ? `<div class="cond ${c.test(S) ? 'live-on' : ''}"><div class="cond-h">${c.kind}<span class="dots">⋮</span></div><div class="cond-b">${c.body}</div></div>`
+      : `<div class="cond empty">+ Lägg till villkor</div>`;
+    const a = watch && watch.avail[lv];
+    const inh = a ? `<a class="inh ${a.test(S) ? 'live-on' : ''}" href="#availPage">↗ Från Tillgänglighet: <b>${watch.name}</b> otillgänglig i <b>${a.after}</b><span>Ändra</span></a>` : '';
+    return `<div class="lc"><span class="tag ${lv}">${SV[lv]}</span><div class="lc-stack">${box}${inh}</div></div>`;
+  };
+  const levels = ORDER.filter(lv => r.lc[lv]);
+  const peers = RULES.filter(x => ORDER.some(lv => x.lc[lv] && levels.includes(lv))).sort((a, b) => b.prio - a.prio);
+  const prioList = peers.map((x, i) => `<li class="${x.id === r.id ? 'me' : ''}"><i>${i + 1}</i>${x.icon} ${x.name}<small>${ORDER.filter(lv => x.lc[lv] && levels.includes(lv)).map(lv => SV[lv]).join(', ')}</small>${x.id === r.id ? `<span class="mv"><button type="button" aria-label="Flytta upp" onclick="movePrio('${r.id}', -1)" ${i === 0 ? 'disabled' : ''}>▲</button><button type="button" aria-label="Flytta ner" onclick="movePrio('${r.id}', 1)" ${i === peers.length - 1 ? 'disabled' : ''}>▼</button></span>` : ''}</li>`).join('');
+  const hideBox = r.hide
+    ? `<div class="cond ${r.hide.test(S) ? 'live-on' : ''}"><div class="cond-h">${r.hide.kind}<span class="dots">⋮</span></div><div class="cond-b">${r.hide.body}</div></div>`
+    : `<div class="cond empty">+ Lägg till villkor</div>`;
+  document.getElementById('cfgDlg').innerHTML = `
+    <div class="dlg-h"><span class="x">✕</span><b>Redigera regel</b></div>
+    <div class="dlg-b">
+      <div class="fld"><label>Typ</label><div class="val">${r.type} ▾</div><div class="help">Väljs först: styr vilka entitetsfält och orsaksmallar som följer</div></div>
+      <div class="row2">
+        <div class="fld"><label>Namn</label><div class="val">${r.name}</div></div>
+        <div class="fld"><label>Ikon</label><div class="val">${r.icon}</div></div>
+      </div>
+      <div class="fld"><label>Entiteter som typen visar</label><div class="val mono">${r.ents}</div></div>
+      <div class="grp-h">Nivåvillkor <small>den allvarligaste uppfyllda nivån gäller</small></div>
+      ${ORDER.map(lcRow).join('')}
+      <div class="grp-h">Dölj när <small>slår alla nivåvillkor</small></div>
+      <div class="lc"><span class="tag hide">Dölj</span>${hideBox}</div>
+      <div class="fld"><label>Ordning</label><ol class="prio">${prioList}</ol><div class="help">Bland regler som kan hamna på samma nivå som den här. Flytta med pilarna; talet (${r.prio}) sparas i bakgrunden.</div></div>
+      <div class="fld"><label>Orsak</label><div class="val">${r.preset ? r.preset : 'Egen template…'} ▾</div>
+        ${r.preset ? '' : `<div class="help mono">${(r.reason || '').replace(/</g, '&lt;')}</div>`}
+        <div class="preview">Förhandsvisning: <b>${(r.preview && r.preview()) || '– (dold just nu, ingen text visas)'}</b></div></div>
+      ${r.actions ? `<div class="fld"><label>Åtgärder</label><div class="val">${r.actions}</div></div>` : ''}
+      ${r.lc.alarm ? `<div class="fld"><label>Larma igen efter kvittering</label><div class="val">24 timmar</div><div class="help">Standard. Tomt = aldrig.</div></div>` : ''}
+    </div>
+    <div class="dlg-f"><button type="button" class="habtn">Avbryt</button><button type="button" class="habtn fill">Spara</button></div>`;
+}
+
+function movePrio(id, dir) {
+  const r = RULES.find(x => x.id === id);
+  const levels = ORDER.filter(lv => r.lc[lv]);
+  const peers = RULES.filter(x => ORDER.some(lv => x.lc[lv] && levels.includes(lv))).sort((a, b) => b.prio - a.prio);
+  const i = peers.indexOf(r), j = i + dir;
+  if (j < 0 || j >= peers.length) return;
+  [r.prio, peers[j].prio] = [peers[j].prio, r.prio];
+  if (r.prio === peers[j].prio) r.prio += dir < 0 ? 1 : -1;
+  renderAll();
+}
+
+function renderAvailPage() {
+  const cell = (w, lv) => {
+    const a = w.avail[lv];
+    if (!a) return `<div class="avail off">– ▾</div>`;
+    return `<div class="avail ${a.test(S) ? 'live-on' : ''}">efter <b>${a.after}</b> ▾</div>`;
+  };
+  const dev = WATCHES.filter(w => w.kind === 'Enhet').map(w =>
+    `<div class="av-row"><span>${w.icon} ${w.name}</span>${cell(w, 'problem')}${cell(w, 'alarm')}</div>`).join('');
+  const nibe = WATCHES.find(w => w.id === 'w-nibe');
+  document.getElementById('availPage').innerHTML = `
+    <div class="dlg-h"><span class="x">←</span><b>AttentionSpan · Tillgänglighet</b></div>
+    <div class="dlg-b">
+      <div class="grp-h">Integrationer <small>bevakas automatiskt</small></div>
+      <div class="av-row"><span>Integration som inte laddas</span><div class="avail ${nibe.avail.problem.test(S) ? 'live-on' : ''}"><span class="tag problem">Problem</span> direkt ▾</div><div class="avail off">Undantag: inga · + Lägg till</div></div>
+      <div class="grp-h">Enheter <small>du väljer vilka som bevakas</small></div>
+      <div class="av-row av-head"><span></span><span><span class="tag problem">Problem</span></span><span><span class="tag alarm">Larm</span></span></div>
+      ${dev}
+      <div class="cond empty">+ Lägg till enhet</div>
+    </div>
+    <div class="dlg-f"><button type="button" class="habtn fill">Spara</button></div>`;
+}
+
+function renderControls() {
+  const el = document.getElementById('controls');
+  el.innerHTML = '<h3>Scenario</h3>' + CONTROLS.map(c => `<div class="ctl"><span>${c.label}</span><div class="seg">${c.opts.map(([v, l]) =>
+    `<button type="button" aria-pressed="${S[c.key] === v}" onclick='S["${c.key}"]=${JSON.stringify(v)};renderAll()'>${l}</button>`).join('')}</div></div>`).join('');
+}
+
+function renderEval(results) {
+  const rows = [];
+  for (const r of ALL) {
+    const e = results[r.id];
+    rows.push(`<tr class="rh"><td colspan="2">${r.icon} ${r.name}${r.kind ? ' <small class="no">· tillgänglighet</small>' : ''}</td><td class="res"><span class="tag ${e.level}">${SV[e.level]}${acked[r.id] ? ' · kvitterad' : ''}</span></td></tr>`);
+    for (const lv of ORDER) {
+      if (!r.lc[lv]) continue;
+      const ok = r.lc[lv].test(S);
+      rows.push(`<tr class="${!e.hidden && e.level === lv ? 'win' : ''}"><td><span class="tag ${lv}">${SV[lv]}</span></td><td>${r.lc[lv].body.replace(/<br>/g, ' ')}</td><td class="res ${ok ? 'ok' : 'no'}">${ok ? '✓' : '–'}</td></tr>`);
+    }
+    for (const lv of ORDER) {
+      if (!r.avail || !r.avail[lv]) continue;
+      const ok = r.avail[lv].test(S);
+      rows.push(`<tr class="${!e.hidden && e.level === lv ? 'win' : ''}"><td><span class="tag ${lv}">${SV[lv]}</span></td><td>${r.kind === 'Integration' ? 'Laddas inte' : 'Otillgänglig i ' + r.avail[lv].after}</td><td class="res ${ok ? 'ok' : 'no'}">${ok ? '✓' : '–'}</td></tr>`);
+    }
+    if (r.hide) {
+      const ok = r.hide.test(S);
+      rows.push(`<tr class="${ok ? 'win' : ''}"><td><span class="tag hide">Dölj</span></td><td>${r.hide.body}</td><td class="res ${ok ? 'ok' : 'no'}">${ok ? '✓' : '–'}</td></tr>`);
+    }
+  }
+  document.getElementById('evalTbl').innerHTML = rows.join('');
+}
+
+function noticeCard(r, lv) {
+  const [t, sub] = r.text(lv);
+  if (lv === 'alarm') {
+    if (acked[r.id]) return `<div class="card alarm acked"><div class="row"><div class="ico">${r.icon}</div><div class="tx"><b>${t}</b><small>Kvitterad · larmar igen om 24 h om det består</small></div></div></div>`;
+    return `<div class="card alarm"><div class="row"><div class="ico">${r.icon}</div><div class="tx"><b>${t}</b><small>${sub}</small></div></div>
+      <div class="acts"><button type="button" class="dbtn pri" onclick="acked['${r.id}']=true;renderAll()">Kvittera</button><button type="button" class="dbtn">Visa givare</button></div>
+      <div class="noaside">Larm kan kvitteras men inte läggas åt sidan.</div></div>`;
+  }
+  if (lv === 'problem') return `<div class="card problem"><div class="row"><div class="ico">${r.icon}</div><div class="tx"><b>${t}</b><small>${sub}</small></div></div>${r.actions ? '<div class="acts"><button type="button" class="dbtn">Starta om</button></div>' : ''}</div>`;
+  const bar = r.id === 'tvatt' && S.wash === 'running' ? '<div class="bar"><i style="--v:62%"></i></div>' : '';
+  const act = r.id === 'tvatt' && S.wash === 'done' ? '<div class="acts"><button type="button" class="dbtn pri">Urplockad</button></div>' : '';
+  return `<div class="card ongoing"><div class="row"><div class="ico">${r.icon}</div><div class="tx"><b>${t}</b><small>${sub}</small></div></div>${bar}${act}</div>`;
+}
+const chip = (r, lv) => { const [t, sub] = r.text(lv); return `<span class="g">${r.icon} ${t} <small>${sub}</small></span>`; };
+const line = (r, lv) => { const [t, sub] = r.text(lv); return `<div class="q">${r.icon} <em>${t}</em> ${sub}</div>`; };
+
+function renderDash(id, results, variant) {
+  const by = lv => ALL.filter(r => results[r.id].level === lv).sort((a, b) => b.prio - a.prio);
+  const out = [`<div class="d-top"><b>Fredag 20:14</b><small>Fältvägen 12B · 8° ute</small></div>`];
+  const alarms = by('alarm'), problems = by('problem'), ongoing = by('ongoing');
+  out.push(...alarms.map(r => noticeCard(r, 'alarm')));
+  out.push(...problems.map(r => noticeCard(r, 'problem')));
+  out.push(...ongoing.map(r => noticeCard(r, 'ongoing')));
+  if (!alarms.length && !problems.length && !ongoing.length) out.push(`<div class="calm"><i></i>Allt är lugnt hemma.</div>`);
+  if (variant === 'B') {
+    const merged = [...by('glance'), ...by('quiet')].sort((a, b) => b.prio - a.prio);
+    out.push('<div class="lvl-lbl">Blick (sammanslagen)</div>');
+    let i = 0;
+    while (i < merged.length) {
+      const r = merged[i];
+      const lv = results[r.id].level;
+      if (r.type === 'Rad') {
+        const run = [];
+        while (i < merged.length && merged[i].type === 'Rad') { run.push(chip(merged[i], results[merged[i].id].level)); i++; }
+        out.push(`<div class="glance">${run.join('')}</div>`);
+      } else { out.push(`<div class="quiet">${line(r, lv)}</div>`); i++; }
+    }
+  } else {
+    const gl = by('glance'), qu = by('quiet');
+    if (variant === 'A') out.push('<div class="lvl-lbl">Blick</div>');
+    out.push(`<div class="glance">${gl.map(r => chip(r, 'glance')).join('')}</div>`);
+    if (variant === 'A') out.push('<div class="lvl-lbl">Tyst</div>');
+    out.push(`<div class="quiet">${qu.map(r => line(r, 'quiet')).join('')}</div>`);
+  }
+  document.getElementById(id).innerHTML = out.join('');
+}
+
+function renderAll() {
+  const results = {};
+  for (const r of ALL) results[r.id] = evaluate(r);
+  renderAvailPage();
+  renderControls();
+  renderEval(results);
+  renderCfg();
+  renderDash('dashMain', results, 'main');
+  renderDash('dashA', results, 'A');
+  renderDash('dashB', results, 'B');
+}
+renderAll();
+</script>
+</body>
+</html>

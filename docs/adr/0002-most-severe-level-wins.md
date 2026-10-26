@@ -1,0 +1,3 @@
+# The most severe matching Level wins; order does not matter
+
+When a Rule is evaluated, every condition is checked and the most severe Level whose condition holds applies; separate hide conditions override everything and make the Rule hidden. We rejected first-match evaluation (as in Home Assistant's `choose`), even though it is the familiar pattern, because most Rules are escalations over time or value (offline → Problem, offline > 2 h → Alarm), and first-match silently never reaches a step that is placed in the wrong order, a mistake an editor can only detect in trivial cases. First-match's one real advantage, expressing exceptions concisely, is covered by explicit hide conditions.
