@@ -53,6 +53,23 @@ async def test_removing_the_rule_removes_the_entity(hass: HomeAssistant):
     assert er.async_get(hass).async_get("sensor.attention_span_bilen") is None
 
 
+async def test_a_new_rule_with_the_name_of_a_removed_one_starts_now(
+    hass: HomeAssistant, freezer
+):
+    freezer.move_to(FIXTURE_TIME)
+    entry = await add_integration(hass)
+    rule = await add_rule(hass, entry, "value", BILEN)
+    assert hass.config_entries.async_remove_subentry(entry, rule)
+    await hass.async_block_till_done()
+    freezer.move_to("2026-10-26T09:30:00+00:00")
+
+    await add_rule(hass, entry, "value", BILEN)
+
+    state = hass.states.get("sensor.attention_span_bilen")
+    assert state.state == "glance"
+    assert state.attributes["since"] == "2026-10-26T09:30:00+00:00"
+
+
 async def test_adding_another_rule_keeps_when_the_level_began(hass: HomeAssistant, freezer):
     freezer.move_to(FIXTURE_TIME)
     entry = await add_integration(hass)
