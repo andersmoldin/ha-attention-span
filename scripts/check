@@ -1,0 +1,51 @@
+#!/bin/sh
+# Kör testerna eller lint med en Python som har testberoendena installerade.
+# Ordning: ./.venv, $HA_ATTENTION_SPAN_VENV (standard ~/.venvs/ha-attention-span), python3, python.
+# Används av .no-mistakes.yaml och CI, så att samma kommando fungerar överallt.
+# Kataloger och prov som inte finns ännu hoppas över i stället för att ge rött.
+set -eu
+
+find_python() {
+  for candidate in ./.venv/bin/python "${HA_ATTENTION_SPAN_VENV:-$HOME/.venvs/ha-attention-span}/bin/python"; do
+    if [ -x "$candidate" ]; then
+      echo "$candidate"
+      return
+    fi
+  done
+  for candidate in python3 python; do
+    if command -v "$candidate" >/dev/null 2>&1; then
+      echo "$candidate"
+      return
+    fi
+  done
+  echo "Hittar ingen Python. Skapa .venv: python3 -m venv .venv && .venv/bin/pip install -r requirements_test.txt" >&2
+  exit 1
+}
+
+PY=$(find_python)
+
+case "${1:-}" in
+  test)
+    "$PY" -m pytest -q -p no:cacheprovider
+    set -- tests/js/*.test.mjs
+    if [ -e "$1" ]; then
+      exec node --test "$@"
+    fi
+    ;;
+  lint)
+    set --
+    for dir in custom_components tests scripts; do
+      if [ -d "$dir" ]; then
+        set -- "$@" "$dir"
+      fi
+    done
+    "$PY" -m ruff check "$@"
+    if [ -d custom_components ]; then
+      exec "$PY" -m mypy custom_components --ignore-missing-imports
+    fi
+    ;;
+  *)
+    echo "Användning: scripts/check test|lint" >&2
+    exit 2
+    ;;
+esac

@@ -1,0 +1,3 @@
+commands:
+  test: scripts/check test
+  lint: scripts/check lint
