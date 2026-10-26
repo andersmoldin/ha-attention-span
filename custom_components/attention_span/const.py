@@ -11,17 +11,19 @@ CONF_ICON: Final = "icon"
 CONF_ENTITIES: Final = "entities"
 CONF_LEVELS: Final = "levels"
 CONF_PRIORITY: Final = "priority"
+# Dölj när: villkor som gör regeln dold oavsett nivåvillkor.
+CONF_HIDE: Final = "hide"
 
+TYPE_STATUS: Final = "status"
 TYPE_VALUE: Final = "value"
-TYPES: Final = (TYPE_VALUE,)
+TYPES: Final = (TYPE_STATUS, TYPE_VALUE)
 
 # Nivåerna, den allvarligaste först (ADR 0002).
 LEVELS: Final = ("alarm", "problem", "ongoing", "glance", "quiet")
 # Tillståndet när ingen nivå gäller. Ingen nivå i sig.
 HIDDEN: Final = "hidden"
-# Nivåer som en regel kan få «Alltid» på i formuläret.
-ALWAYS_LEVELS: Final = ("glance", "quiet")
-# Värdet för en nivå i CONF_LEVELS som gäller utan villkor.
+# Värdet för en nivå i CONF_LEVELS som gäller utan villkor. Övriga nivåer i CONF_LEVELS
+# har en lista med HA-villkor, och en nivå som saknas där har inget villkor.
 ALWAYS: Final = "always"
 
 # Dataformatets version. Ändringar som bryter kontraktet kräver ett nytt värde.

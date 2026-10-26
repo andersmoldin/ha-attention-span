@@ -2,6 +2,7 @@
 // byggt av de delade fixturerna (tests/fixtures/contract-v1.json), samma exempel som
 // backend-testerna förväntar sig som utdata.
 import { readFileSync } from "node:fs";
+import { after } from "node:test";
 
 import { Window } from "happy-dom";
 
@@ -11,6 +12,9 @@ for (const name of ["window", "document", "customElements", "HTMLElement"]) {
 }
 
 await import("../../custom_components/attention_span/www/attention-span-card.js");
+
+// Ett kort i dokumentet ritar om sig varje minut. Ta bort det sista, så att testerna kan avslutas.
+after(() => document.body.replaceChildren());
 
 const examples = JSON.parse(
   readFileSync(new URL("../fixtures/contract-v1.json", import.meta.url), "utf8"),
@@ -29,6 +33,13 @@ export function notice(name, { state, attributes = {} } = {}) {
 // Entiteten som en Rule av typen Värde visar.
 export function value(entityId, state, unit) {
   return { entity_id: entityId, state, attributes: unit ? { unit_of_measurement: unit } : {} };
+}
+
+// Entiteten som en Rule av typen Status visar: ett tillstånd som HA redan har formaterat
+// och som har gällt i minutes minuter.
+export function status(entityId, state, minutes) {
+  const changed = new Date(Date.now() - minutes * 60_000).toISOString();
+  return { entity_id: entityId, state, attributes: {}, last_changed: changed };
 }
 
 // Som HA: tillstånden, entitetsregistret och formatEntityState. AttentionSpans

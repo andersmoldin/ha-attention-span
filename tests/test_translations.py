@@ -5,9 +5,16 @@ import pytest
 from homeassistant import config_entries
 from homeassistant.core import HomeAssistant
 
-from custom_components.attention_span.const import DOMAIN, SUBENTRY_RULE
+from custom_components.attention_span.const import DOMAIN, LEVELS, SUBENTRY_RULE
 
-from .conftest import BILEN, add_integration, add_rule, start_rule, start_rule_reconfigure
+from .conftest import (
+    ALWAYS_GLANCE,
+    BILEN,
+    add_integration,
+    add_rule,
+    start_rule,
+    start_rule_reconfigure,
+)
 
 TRANSLATIONS = pathlib.Path(__file__).parents[1] / "custom_components" / DOMAIN / "translations"
 
@@ -54,8 +61,19 @@ async def _shown_keys(hass: HomeAssistant) -> set[str]:
     keys |= _form_keys(rule, result)
     result = await start_rule(hass, entry, "value")
     keys |= _form_keys(rule, result) | {f"{rule}.error.name_required"}
+    result = await start_rule(hass, entry, "status")
+    keys |= _form_keys(rule, result)
+    result = await hass.config_entries.subentries.async_configure(result["flow_id"], BILEN)
+    keys |= _form_keys(rule, result) | {f"{rule}.error.level_required"}
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], dict.fromkeys(LEVELS, "condition")
+    )
+    keys |= _form_keys(rule, result) | {
+        f"{rule}.error.condition_required",
+        f"{rule}.error.invalid_condition",
+    }
 
-    subentry_id = await add_rule(hass, entry, "value", BILEN)
+    subentry_id = await add_rule(hass, entry, "value", BILEN, ALWAYS_GLANCE)
     result = await start_rule_reconfigure(hass, entry, subentry_id)
     keys |= _form_keys(rule, result) | {f"{rule}.abort.reconfigure_successful"}
 

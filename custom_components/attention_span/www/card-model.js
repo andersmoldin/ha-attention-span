@@ -6,19 +6,51 @@ const DOMAIN = "attention_span";
 const CONTRACT = 1;
 
 // Nivåer som behöver hushållet. Så länge en notis har någon av dem är det inte lugnt,
-// även när kortet ännu inte ritar nivån.
+// även när kortet inte kan rita notisens Typ.
 const NEEDS_ATTENTION = ["alarm", "problem", "ongoing"];
 
 // Typer som kortet kan rita. Notiser av andra Typer ritas inte förrän kortet kan det.
-const DRAWN_TYPES = ["value"];
+const DRAWN_TYPES = ["value", "status"];
 
-function row(hass, stateObj) {
+// Typen Status: tillståndet och hur länge det har gällt.
+const STATUS_TEXT = {
+  en: (state, duration) => `${state} for ${duration}`,
+  sv: (state, duration) => `${state} i ${duration}`,
+};
+
+function language(hass) {
+  return hass.locale?.language ?? hass.language;
+}
+
+// Hur länge, i hela minuter under en timme, i timmar under två dygn och därefter i dygn.
+function duration(ms, lang) {
+  const minutes = Math.max(0, Math.floor(ms / 60_000));
+  const [amount, unit] =
+    minutes < 60
+      ? [minutes, "minute"]
+      : minutes < 48 * 60
+        ? [Math.floor(minutes / 60), "hour"]
+        : [Math.floor(minutes / (24 * 60)), "day"];
+  return new Intl.NumberFormat(lang, { style: "unit", unit, unitDisplay: "short" }).format(amount);
+}
+
+// Det notisens Typ visar om entiteten.
+function content(hass, type, shown, now) {
+  if (!shown) return "–";
+  const state = hass.formatEntityState(shown);
+  if (type !== "status") return state;
+  const lang = language(hass);
+  const phrase = STATUS_TEXT[lang] ?? STATUS_TEXT.en;
+  return phrase(state, duration(now - Date.parse(shown.last_changed), lang));
+}
+
+function row(hass, stateObj, now) {
   const a = stateObj.attributes;
-  const shown = hass.states[a.entities?.[0]];
   return {
     name: a.friendly_name ?? stateObj.entity_id,
     icon: a.icon ?? null,
-    value: shown ? hass.formatEntityState(shown) : "–",
+    type: a.type,
+    text: content(hass, a.type, hass.states[a.entities?.[0]], now),
   };
 }
 
@@ -31,7 +63,8 @@ function byRuleOrder(a, b) {
   return a.entity_id.localeCompare(b.entity_id);
 }
 
-export function cardModel(hass) {
+// now är tiden i millisekunder, så att «hur länge» kan räknas.
+export function cardModel(hass, now) {
   const notices = Object.keys(hass.entities ?? {})
     .filter((id) => hass.entities[id].platform === DOMAIN)
     .map((id) => hass.states[id])
@@ -40,9 +73,12 @@ export function cardModel(hass) {
     notices
       .filter((s) => s.state === level && DRAWN_TYPES.includes(s.attributes.type))
       .sort(byRuleOrder)
-      .map((s) => row(hass, s));
+      .map((s) => row(hass, s, now));
   return {
     calm: !notices.some((s) => NEEDS_ATTENTION.includes(s.state)),
+    alarm: atLevel("alarm"),
+    problem: atLevel("problem"),
+    ongoing: atLevel("ongoing"),
     glance: atLevel("glance"),
     quiet: atLevel("quiet"),
   };

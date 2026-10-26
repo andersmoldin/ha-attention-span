@@ -3,6 +3,8 @@ from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers import entity_registry as er
 
 from .conftest import (
+    ALWAYS_GLANCE,
+    ALWAYS_QUIET,
     BILEN,
     ELPRIS,
     FIXTURE_TIME,
@@ -19,8 +21,8 @@ async def test_rule_always_at_a_level_becomes_a_sensor_in_contract_v1(hass: Home
     freezer.move_to(FIXTURE_TIME)
     entry = await add_integration(hass)
 
-    await add_rule(hass, entry, "value", BILEN)
-    await add_rule(hass, entry, "value", ELPRIS)
+    await add_rule(hass, entry, "value", BILEN, ALWAYS_GLANCE)
+    await add_rule(hass, entry, "value", ELPRIS, ALWAYS_QUIET)
 
     for name in ("value_glance", "value_quiet"):
         expected = contract_example(name)
@@ -30,10 +32,10 @@ async def test_rule_always_at_a_level_becomes_a_sensor_in_contract_v1(hass: Home
 async def test_changing_the_level_changes_the_state(hass: HomeAssistant, freezer):
     freezer.move_to(FIXTURE_TIME)
     entry = await add_integration(hass)
-    rule = await add_rule(hass, entry, "value", BILEN)
+    rule = await add_rule(hass, entry, "value", BILEN, ALWAYS_GLANCE)
     freezer.move_to("2026-10-26T09:30:00+00:00")
 
-    await reconfigure_rule(hass, entry, rule, BILEN | {"level": "quiet"})
+    await reconfigure_rule(hass, entry, rule, BILEN, ALWAYS_QUIET)
 
     state = hass.states.get("sensor.attention_span_bilen")
     assert state.state == "quiet"
@@ -43,7 +45,7 @@ async def test_changing_the_level_changes_the_state(hass: HomeAssistant, freezer
 
 async def test_removing_the_rule_removes_the_entity(hass: HomeAssistant):
     entry = await add_integration(hass)
-    rule = await add_rule(hass, entry, "value", BILEN)
+    rule = await add_rule(hass, entry, "value", BILEN, ALWAYS_GLANCE)
     assert hass.states.get("sensor.attention_span_bilen") is not None
 
     assert hass.config_entries.async_remove_subentry(entry, rule)
@@ -58,12 +60,12 @@ async def test_a_new_rule_with_the_name_of_a_removed_one_starts_now(
 ):
     freezer.move_to(FIXTURE_TIME)
     entry = await add_integration(hass)
-    rule = await add_rule(hass, entry, "value", BILEN)
+    rule = await add_rule(hass, entry, "value", BILEN, ALWAYS_GLANCE)
     assert hass.config_entries.async_remove_subentry(entry, rule)
     await hass.async_block_till_done()
     freezer.move_to("2026-10-26T09:30:00+00:00")
 
-    await add_rule(hass, entry, "value", BILEN)
+    await add_rule(hass, entry, "value", BILEN, ALWAYS_GLANCE)
 
     state = hass.states.get("sensor.attention_span_bilen")
     assert state.state == "glance"
@@ -73,10 +75,10 @@ async def test_a_new_rule_with_the_name_of_a_removed_one_starts_now(
 async def test_adding_another_rule_keeps_when_the_level_began(hass: HomeAssistant, freezer):
     freezer.move_to(FIXTURE_TIME)
     entry = await add_integration(hass)
-    await add_rule(hass, entry, "value", BILEN)
+    await add_rule(hass, entry, "value", BILEN, ALWAYS_GLANCE)
     freezer.move_to("2026-10-26T09:30:00+00:00")
 
-    await add_rule(hass, entry, "value", ELPRIS)
+    await add_rule(hass, entry, "value", ELPRIS, ALWAYS_QUIET)
 
     assert hass.states.get("sensor.attention_span_bilen").attributes["since"] == FIXTURE_TIME
 

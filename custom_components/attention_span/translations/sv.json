@@ -25,18 +25,28 @@
             "type": "Typ"
           }
         },
+        "status": {
+          "title": "Status",
+          "description": "Ett tillstånd och hur länge det har gällt, till exempel att ytterdörren är öppen.",
+          "data": {
+            "name": "Namn",
+            "icon": "Ikon",
+            "entity": "Entitet"
+          },
+          "data_description": {
+            "entity": "Entiteten vars tillstånd notisen visar."
+          }
+        },
         "value": {
           "title": "Värde",
           "description": "Ett tal med enhet, till exempel bilens laddning.",
           "data": {
             "name": "Namn",
             "icon": "Ikon",
-            "entity": "Entitet",
-            "level": "Visas alltid som"
+            "entity": "Entitet"
           },
           "data_description": {
-            "entity": "En numerisk sensor.",
-            "level": "Nivån som regeln alltid har."
+            "entity": "En numerisk sensor."
           }
         },
         "reconfigure": {
@@ -44,17 +54,44 @@
           "data": {
             "name": "Namn",
             "icon": "Ikon",
-            "entity": "Entitet",
-            "level": "Visas alltid som"
+            "entity": "Entitet"
           },
           "data_description": {
-            "entity": "En numerisk sensor.",
-            "level": "Nivån som regeln alltid har."
+            "entity": "Entiteten som notisen visar."
+          }
+        },
+        "levels": {
+          "title": "Nivåer",
+          "description": "Välj för varje nivå om den aldrig gäller, alltid gäller eller gäller när ett villkor är uppfyllt. Den allvarligaste nivån som gäller vinner, oavsett ordning.",
+          "data": {
+            "alarm": "Larm",
+            "problem": "Problem",
+            "ongoing": "Pågår",
+            "glance": "Blick",
+            "quiet": "Tyst"
+          }
+        },
+        "conditions": {
+          "title": "Villkor",
+          "description": "Ange villkoren för nivåerna med Villkor. Flera villkor för samma nivå måste alla gälla; använd «Eller» om det räcker att ett gäller.",
+          "data": {
+            "alarm": "Larm",
+            "problem": "Problem",
+            "ongoing": "Pågår",
+            "glance": "Blick",
+            "quiet": "Tyst",
+            "hide": "Dölj när"
+          },
+          "data_description": {
+            "hide": "Regeln är dold när villkoret gäller, oavsett nivåvillkoren."
           }
         }
       },
       "error": {
-        "name_required": "Ange ett namn."
+        "name_required": "Ange ett namn.",
+        "level_required": "Välj Alltid eller Villkor för minst en nivå.",
+        "condition_required": "Lägg till ett villkor, eller välj Inget eller Alltid för nivån.",
+        "invalid_condition": "Villkoret är ogiltigt."
       },
       "abort": {
         "reconfigure_successful": "Regeln har ändrats."
@@ -64,13 +101,15 @@
   "selector": {
     "type": {
       "options": {
+        "status": "Status",
         "value": "Värde"
       }
     },
-    "level": {
+    "level_mode": {
       "options": {
-        "glance": "Blick",
-        "quiet": "Tyst"
+        "none": "Inget",
+        "always": "Alltid",
+        "condition": "Villkor"
       }
     }
   },
