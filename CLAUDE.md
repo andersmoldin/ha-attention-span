@@ -11,3 +11,7 @@ Default vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-
 ### Domain docs
 
 Single-context: one `GLOSSARY.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+
+## Versioner
+
+Inför en ny version: föreslå versionen och fråga, i formen "Nästa version är 0.3.0. Säg till om du vill gå till en annan version."
