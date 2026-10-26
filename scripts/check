@@ -1,6 +1,7 @@
 #!/bin/sh
 # Kör testerna eller lint med en Python som har testberoendena installerade.
 # Ordning: ./.venv, $HA_ATTENTION_SPAN_VENV (standard ~/.venvs/ha-attention-span), python3, python.
+# Kort-testerna körs med node och installerar sina beroenden enligt package-lock.json.
 # Används av .no-mistakes.yaml och CI, så att samma kommando fungerar överallt.
 # Kataloger och prov som inte finns ännu hoppas över i stället för att ge rött.
 set -eu
@@ -29,6 +30,11 @@ case "${1:-}" in
     "$PY" -m pytest -q -p no:cacheprovider
     set -- tests/js/*.test.mjs
     if [ -e "$1" ]; then
+      # Kort-testerna ritar kortet i happy-dom. Installera enligt låsfilen när
+      # node_modules saknas eller är äldre än låsfilen.
+      if [ ! node_modules/.package-lock.json -nt package-lock.json ]; then
+        npm ci --no-audit --no-fund --loglevel=error
+      fi
       exec node --test "$@"
     fi
     ;;

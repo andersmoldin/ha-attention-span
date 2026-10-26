@@ -1,10 +1,16 @@
 {
   "domain": "attention_span",
   "name": "AttentionSpan",
+  "after_dependencies": [
+    "frontend"
+  ],
   "codeowners": [
     "@andersmoldin"
   ],
   "config_flow": true,
+  "dependencies": [
+    "http"
+  ],
   "documentation": "https://github.com/andersmoldin/ha-attention-span",
   "integration_type": "service",
   "iot_class": "calculated",

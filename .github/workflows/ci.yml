@@ -24,8 +24,15 @@ jobs:
           cache: pip
           cache-dependency-path: requirements_test.txt
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
       - name: Install
-        run: pip install -r requirements_test.txt
+        run: |
+          pip install -r requirements_test.txt
+          npm ci --no-audit --no-fund
 
       - name: Lint
         run: scripts/check lint
