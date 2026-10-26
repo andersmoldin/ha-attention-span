@@ -109,16 +109,31 @@ test("en notis i ett annat dataformat än version 1 ritas inte", () => {
   assert.equal(root.querySelectorAll(".glance, .quiet").length, 0);
 });
 
+// Egenskaper som bär färg eller typsnitt. Kortskrivna egenskaper som border och font
+// delas upp av CSSOM, så deras färg och typsnitt hamnar här.
+const THEMED = new Set([
+  "background",
+  "background-image",
+  "box-shadow",
+  "text-shadow",
+  "fill",
+  "stroke",
+  "font-family",
+]);
+
 test("kortet ritas i ha-card och tar färger och typsnitt bara från temat", () => {
   const root = renderCard(fakeHass({ notices: [notice("value_glance")], values: [BILEN] }));
 
   assert.ok(root.querySelector("ha-card .glance"));
-  // Reservvärdet i var(--x, reserv) gäller bara när temat saknar variabeln.
-  const style = root.querySelector("style").textContent.replace(/var\(--[\w-]+,[^()]*\)/g, "var()");
-  assert.doesNotMatch(style, /#[0-9a-f]{3,8}\b|rgba?\(|hsla?\(|(?<![\w-])(white|black)(?![\w-])/i);
-  assert.doesNotMatch(style, /font-family\s*:(?!\s*var\()/);
-  assert.match(style, /var\(--primary-text-color/);
-  assert.match(style, /var\(--secondary-text-color/);
+  const declarations = [...root.querySelector("style").sheet.cssRules].flatMap((rule) =>
+    Array.from(rule.style, (property) => [property, rule.style.getPropertyValue(property)]),
+  );
+  const themed = declarations.filter(([property]) => property.endsWith("color") || THEMED.has(property));
+  const fixed = themed.filter(([, val]) => val !== "inherit" && !/^var\(--[\w-]+\)$/.test(val));
+  assert.deepEqual(fixed, []);
+  const values = themed.map(([, val]) => val);
+  assert.ok(values.includes("var(--primary-text-color)"));
+  assert.ok(values.includes("var(--secondary-text-color)"));
 });
 
 test("kortet finns i kortväljaren och kan läggas till utan inställningar", () => {
