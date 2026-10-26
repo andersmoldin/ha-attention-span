@@ -1,0 +1,36 @@
+{
+  "value_glance": {
+    "entity_id": "sensor.attention_span_bilen",
+    "state": "glance",
+    "attributes": {
+      "options": ["alarm", "problem", "ongoing", "glance", "quiet", "hidden"],
+      "contract": 1,
+      "source": "rule",
+      "type": "value",
+      "priority": 1,
+      "reason": null,
+      "entities": ["sensor.bilen_batteri"],
+      "since": "2026-10-26T08:00:00+00:00",
+      "device_class": "enum",
+      "icon": "mdi:car",
+      "friendly_name": "Bilen"
+    }
+  },
+  "value_quiet": {
+    "entity_id": "sensor.attention_span_elpris",
+    "state": "quiet",
+    "attributes": {
+      "options": ["alarm", "problem", "ongoing", "glance", "quiet", "hidden"],
+      "contract": 1,
+      "source": "rule",
+      "type": "value",
+      "priority": 2,
+      "reason": null,
+      "entities": ["sensor.elpris"],
+      "since": "2026-10-26T08:00:00+00:00",
+      "device_class": "enum",
+      "icon": "mdi:flash",
+      "friendly_name": "Elpris"
+    }
+  }
+}

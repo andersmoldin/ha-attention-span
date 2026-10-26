@@ -1,0 +1,15 @@
+{
+  "domain": "attention_span",
+  "name": "AttentionSpan",
+  "codeowners": [
+    "@andersmoldin"
+  ],
+  "config_flow": true,
+  "documentation": "https://github.com/andersmoldin/ha-attention-span",
+  "integration_type": "service",
+  "iot_class": "calculated",
+  "issue_tracker": "https://github.com/andersmoldin/ha-attention-span/issues",
+  "requirements": [],
+  "single_config_entry": true,
+  "version": "0.0.0"
+}

@@ -1,0 +1,91 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "AttentionSpan",
+        "description": "Installera AttentionSpan. Lägg sedan till regler på integrationen."
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "AttentionSpan är redan installerat. Lägg till regler på integrationen i stället."
+    }
+  },
+  "config_subentries": {
+    "rule": {
+      "initiate_flow": {
+        "user": "Lägg till regel",
+        "reconfigure": "Ändra regel"
+      },
+      "entry_type": "Regel",
+      "step": {
+        "user": {
+          "title": "Typ",
+          "description": "Typen bestämmer vad notisen visar och vilka fält som följer.",
+          "data": {
+            "type": "Typ"
+          }
+        },
+        "value": {
+          "title": "Värde",
+          "description": "Ett tal med enhet, till exempel bilens laddning.",
+          "data": {
+            "name": "Namn",
+            "icon": "Ikon",
+            "entity": "Entitet",
+            "level": "Visas alltid som"
+          },
+          "data_description": {
+            "entity": "En numerisk sensor.",
+            "level": "Nivån som regeln alltid har."
+          }
+        },
+        "reconfigure": {
+          "title": "Ändra regel",
+          "data": {
+            "name": "Namn",
+            "icon": "Ikon",
+            "entity": "Entitet",
+            "level": "Visas alltid som"
+          },
+          "data_description": {
+            "entity": "En numerisk sensor.",
+            "level": "Nivån som regeln alltid har."
+          }
+        }
+      },
+      "error": {
+        "name_required": "Ange ett namn."
+      },
+      "abort": {
+        "reconfigure_successful": "Regeln har ändrats."
+      }
+    }
+  },
+  "selector": {
+    "type": {
+      "options": {
+        "value": "Värde"
+      }
+    },
+    "level": {
+      "options": {
+        "glance": "Blick",
+        "quiet": "Tyst"
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "rule": {
+        "state": {
+          "alarm": "Larm",
+          "problem": "Problem",
+          "ongoing": "Pågår",
+          "glance": "Blick",
+          "quiet": "Tyst",
+          "hidden": "Dold"
+        }
+      }
+    }
+  }
+}
