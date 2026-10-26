@@ -276,3 +276,32 @@ async def test_a_restart_keeps_when_the_level_began(hass: HomeAssistant, freezer
     state = hass.states.get("sensor.attention_span_tvatten")
     assert state.state == "ongoing"
     assert state.attributes["since"] == FIXTURE_TIME
+
+
+async def test_a_restart_shows_the_level_from_before_until_it_has_been_worked_out(
+    hass: HomeAssistant, freezer
+):
+    freezer.move_to("2026-10-26T05:00:00+00:00")
+    hass.states.async_set("vacuum.findus", "unavailable")
+    freezer.move_to(FIXTURE_TIME)
+    entry = await add_integration(hass)
+    await add_rule(
+        hass,
+        entry,
+        "status",
+        FINDUS,
+        levels={"problem": "condition", "alarm": "condition"},
+        conditions={"problem": [OFFLINE], "alarm": [OFFLINE_2H]},
+    )
+    assert hass.states.get("sensor.attention_span_findus").state == "alarm"
+    freezer.move_to("2026-10-26T09:00:00+00:00")
+
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    hass.states.async_remove("vacuum.findus")
+    hass.set_state(CoreState.not_running)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    state = hass.states.get("sensor.attention_span_findus")
+    assert state.state == "alarm"
+    assert state.attributes["since"] == FIXTURE_TIME

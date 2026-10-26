@@ -226,12 +226,25 @@ test("varje notis på Pågår får ett eget kort", () => {
 });
 
 test("Larm ritas stort och rött ur temat", () => {
-  const root = renderCard(fakeHass({ notices: [notice("status_alarm")], values: [FINDUS] }));
+  const root = renderCard(
+    fakeHass({
+      notices: [
+        notice("status_alarm"),
+        notice("status_problem"),
+        notice("status_ongoing", { state: "glance" }),
+      ],
+      values: [FINDUS, DORREN, TVATTEN],
+    }),
+  );
+  root.host.style.setProperty("--error-color", "rgb(219, 68, 55)");
 
-  const rules = [...root.querySelector("style").sheet.cssRules];
-  const alarmName = rules.find((rule) => rule.selectorText === ".alarm b");
-  assert.equal(alarmName.style.getPropertyValue("color"), "var(--error-color)");
-  assert.ok(parseFloat(alarmName.style.getPropertyValue("font-size")) > 16);
+  const [alarm, problem, glance] = [".notice.alarm b", ".notice.problem b", ".glance b"].map(
+    (selector) => window.getComputedStyle(root.querySelector(selector)),
+  );
+  assert.equal(alarm.color, "rgb(219, 68, 55)");
+  for (const other of [problem, glance]) {
+    assert.ok(parseFloat(alarm.fontSize) > parseFloat(other.fontSize));
+  }
 });
 
 test("en Status-notis på Blick visar namnet först, sedan tillståndet och hur länge", () => {
