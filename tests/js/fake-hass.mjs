@@ -32,8 +32,8 @@ export function value(entityId, state, unit) {
 }
 
 // Som HA: tillstånden, entitetsregistret och formatEntityState. AttentionSpans
-// entiteter hör till plattformen attention_span, övriga till platform.
-export function fakeHass({ notices = [], values = [], language = "sv", platform = "template" } = {}) {
+// entiteter hör till plattformen attention_span, övriga till en annan integration.
+export function fakeHass({ notices = [], values = [], language = "sv" } = {}) {
   const states = {};
   const entities = {};
   for (const stateObj of notices) {
@@ -42,7 +42,7 @@ export function fakeHass({ notices = [], values = [], language = "sv", platform 
   }
   for (const stateObj of values) {
     states[stateObj.entity_id] = stateObj;
-    entities[stateObj.entity_id] = { entity_id: stateObj.entity_id, platform };
+    entities[stateObj.entity_id] = { entity_id: stateObj.entity_id, platform: "template" };
   }
   return {
     states,

@@ -144,3 +144,11 @@ test("kortet ritas om när det som visas ändras, inte när andra entiteter änd
   card.hass = { ...hass, states };
   assert.equal(text(root.querySelector(".glance")), "53 % Bilen");
 });
+
+test("notiser av en Typ som kortet ännu inte kan rita ritas inte som Värde", () => {
+  const root = renderCard(
+    fakeHass({ notices: [notice("value_glance", { attributes: { type: "status" } })], values: [BILEN] }),
+  );
+
+  assert.equal(root.querySelectorAll(".glance, .quiet").length, 0);
+});

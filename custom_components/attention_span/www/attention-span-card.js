@@ -3,8 +3,8 @@
 
 // Samma version som kortet laddades med, så att en uppdatering inte blandar
 // nytt kort med en gammal cachad card-model.js.
-const version = new URL(import.meta.url).search;
-const { cardModel } = await import(`./card-model.js${version}`);
+const versionQuery = new URL(import.meta.url).search;
+const { cardModel } = await import(`./card-model.js${versionQuery}`);
 
 const STRINGS = {
   en: { calm: "All is calm at home." },
