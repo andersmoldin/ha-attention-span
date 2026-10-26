@@ -5,9 +5,9 @@ import pytest
 from homeassistant import config_entries
 from homeassistant.core import HomeAssistant
 
-from custom_components.attention_span.const import DOMAIN
+from custom_components.attention_span.const import DOMAIN, SUBENTRY_RULE
 
-from .conftest import BILEN, add_integration, add_rule
+from .conftest import BILEN, add_integration, add_rule, start_rule, start_rule_reconfigure
 
 TRANSLATIONS = pathlib.Path(__file__).parents[1] / "custom_components" / DOMAIN / "translations"
 
@@ -49,19 +49,14 @@ async def _shown_keys(hass: HomeAssistant) -> set[str]:
         f"{rule}.initiate_flow.reconfigure",
     }
     result = await hass.config_entries.subentries.async_init(
-        (entry.entry_id, "rule"), context={"source": config_entries.SOURCE_USER}
+        (entry.entry_id, SUBENTRY_RULE), context={"source": config_entries.SOURCE_USER}
     )
     keys |= _form_keys(rule, result)
-    result = await hass.config_entries.subentries.async_configure(
-        result["flow_id"], {"type": "value"}
-    )
+    result = await start_rule(hass, entry, "value")
     keys |= _form_keys(rule, result) | {f"{rule}.error.name_required"}
 
     subentry_id = await add_rule(hass, entry, "value", BILEN)
-    result = await hass.config_entries.subentries.async_init(
-        (entry.entry_id, "rule"),
-        context={"source": config_entries.SOURCE_RECONFIGURE, "subentry_id": subentry_id},
-    )
+    result = await start_rule_reconfigure(hass, entry, subentry_id)
     keys |= _form_keys(rule, result) | {f"{rule}.abort.reconfigure_successful"}
 
     state = hass.states.get("sensor.attention_span_bilen")

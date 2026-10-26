@@ -1,4 +1,3 @@
-from homeassistant import config_entries
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers import entity_registry as er
@@ -11,6 +10,7 @@ from .conftest import (
     add_rule,
     contract_example,
     reconfigure_rule,
+    start_rule,
     state_as_contract,
 )
 
@@ -66,12 +66,7 @@ async def test_adding_another_rule_keeps_when_the_level_began(hass: HomeAssistan
 
 async def test_a_rule_needs_a_name(hass: HomeAssistant):
     entry = await add_integration(hass)
-    result = await hass.config_entries.subentries.async_init(
-        (entry.entry_id, "rule"), context={"source": config_entries.SOURCE_USER}
-    )
-    result = await hass.config_entries.subentries.async_configure(
-        result["flow_id"], {"type": "value"}
-    )
+    result = await start_rule(hass, entry, "value")
 
     result = await hass.config_entries.subentries.async_configure(
         result["flow_id"], BILEN | {"name": "  "}

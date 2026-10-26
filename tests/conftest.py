@@ -5,9 +5,9 @@ import pytest
 from homeassistant import config_entries
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.data_entry_flow import FlowResultType
+from homeassistant.data_entry_flow import FlowResult, FlowResultType
 
-from custom_components.attention_span.const import DOMAIN
+from custom_components.attention_span.const import DOMAIN, SUBENTRY_RULE
 
 FIXTURES = pathlib.Path(__file__).parent / "fixtures"
 
@@ -38,16 +38,31 @@ async def add_integration(hass: HomeAssistant) -> ConfigEntry:
     return result["result"]
 
 
-async def add_rule(hass: HomeAssistant, entry: ConfigEntry, rule_type: str, fields: dict) -> str:
-    """Lägg till en Rule via subentry-flödet och returnera subentryns id."""
-    before = set(entry.subentries)
+async def start_rule(hass: HomeAssistant, entry: ConfigEntry, rule_type: str) -> FlowResult:
+    """Öppna subentry-flödet för en ny Rule och välj Typ; returnerar typens formulär."""
     result = await hass.config_entries.subentries.async_init(
-        (entry.entry_id, "rule"), context={"source": config_entries.SOURCE_USER}
+        (entry.entry_id, SUBENTRY_RULE), context={"source": config_entries.SOURCE_USER}
     )
     result = await hass.config_entries.subentries.async_configure(
         result["flow_id"], {"type": rule_type}
     )
     assert result["step_id"] == rule_type
+    return result
+
+
+async def start_rule_reconfigure(
+    hass: HomeAssistant, entry: ConfigEntry, subentry_id: str
+) -> FlowResult:
+    return await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_RULE),
+        context={"source": config_entries.SOURCE_RECONFIGURE, "subentry_id": subentry_id},
+    )
+
+
+async def add_rule(hass: HomeAssistant, entry: ConfigEntry, rule_type: str, fields: dict) -> str:
+    """Lägg till en Rule via subentry-flödet och returnera subentryns id."""
+    before = set(entry.subentries)
+    result = await start_rule(hass, entry, rule_type)
     result = await hass.config_entries.subentries.async_configure(result["flow_id"], fields)
     assert result["type"] is FlowResultType.CREATE_ENTRY
     await hass.async_block_till_done()
@@ -58,10 +73,7 @@ async def add_rule(hass: HomeAssistant, entry: ConfigEntry, rule_type: str, fiel
 async def reconfigure_rule(
     hass: HomeAssistant, entry: ConfigEntry, subentry_id: str, fields: dict
 ) -> None:
-    result = await hass.config_entries.subentries.async_init(
-        (entry.entry_id, "rule"),
-        context={"source": config_entries.SOURCE_RECONFIGURE, "subentry_id": subentry_id},
-    )
+    result = await start_rule_reconfigure(hass, entry, subentry_id)
     result = await hass.config_entries.subentries.async_configure(result["flow_id"], fields)
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "reconfigure_successful"
