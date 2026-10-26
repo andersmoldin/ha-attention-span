@@ -1,0 +1,91 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "AttentionSpan",
+        "description": "Set up AttentionSpan. Then add rules on the integration."
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "AttentionSpan is already set up. Add rules on the integration instead."
+    }
+  },
+  "config_subentries": {
+    "rule": {
+      "initiate_flow": {
+        "user": "Add rule",
+        "reconfigure": "Change rule"
+      },
+      "entry_type": "Rule",
+      "step": {
+        "user": {
+          "title": "Type",
+          "description": "The type decides what the notice shows and which fields follow.",
+          "data": {
+            "type": "Type"
+          }
+        },
+        "value": {
+          "title": "Value",
+          "description": "A number with a unit, for example the car's charge.",
+          "data": {
+            "name": "Name",
+            "icon": "Icon",
+            "entity": "Entity",
+            "level": "Always shown as"
+          },
+          "data_description": {
+            "entity": "A numeric sensor.",
+            "level": "The level the rule always has."
+          }
+        },
+        "reconfigure": {
+          "title": "Change rule",
+          "data": {
+            "name": "Name",
+            "icon": "Icon",
+            "entity": "Entity",
+            "level": "Always shown as"
+          },
+          "data_description": {
+            "entity": "A numeric sensor.",
+            "level": "The level the rule always has."
+          }
+        }
+      },
+      "error": {
+        "name_required": "Enter a name."
+      },
+      "abort": {
+        "reconfigure_successful": "The rule has been updated."
+      }
+    }
+  },
+  "selector": {
+    "type": {
+      "options": {
+        "value": "Value"
+      }
+    },
+    "level": {
+      "options": {
+        "glance": "Glance",
+        "quiet": "Quiet"
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "rule": {
+        "state": {
+          "alarm": "Alarm",
+          "problem": "Problem",
+          "ongoing": "Ongoing",
+          "glance": "Glance",
+          "quiet": "Quiet",
+          "hidden": "Hidden"
+        }
+      }
+    }
+  }
+}
