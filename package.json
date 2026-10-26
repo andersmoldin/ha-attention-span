@@ -1,0 +1,9 @@
+{
+  "name": "ha-attention-span",
+  "private": true,
+  "type": "module",
+  "description": "Testberoenden för kortet. Kortet själv har inga beroenden och inget byggsteg.",
+  "devDependencies": {
+    "happy-dom": "21.0.4"
+  }
+}

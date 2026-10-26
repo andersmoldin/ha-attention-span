@@ -29,6 +29,11 @@ case "${1:-}" in
     "$PY" -m pytest -q -p no:cacheprovider
     set -- tests/js/*.test.mjs
     if [ -e "$1" ]; then
+      # Kort-testerna ritar kortet i happy-dom. Installera enligt låsfilen när
+      # node_modules saknas eller är äldre än låsfilen.
+      if [ ! node_modules/.package-lock.json -nt package-lock.json ]; then
+        npm ci --no-audit --no-fund --loglevel=error
+      fi
       exec node --test "$@"
     fi
     ;;
