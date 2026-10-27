@@ -719,3 +719,16 @@ test("en stapel och ett tryck som inte gäller längre tas bort från notisen", 
   assert.equal(row.getAttribute("role"), null);
   assert.equal(row.getAttribute("tabindex"), null);
 });
+
+test("element som står kvar flyttas inte när en notis före dem försvinner", async () => {
+  const notices = [held("status_alarm", 3 * 60), notice("custom_glance")];
+  const root = renderCard(fakeHass({ notices, values: [FINDUS] }));
+  await settled();
+  const connected = cardHelpers.connected;
+
+  root.host.hass = fakeHass({ notices: [notice("custom_glance")] });
+
+  assert.equal(root.querySelector(".notice"), null);
+  assert.ok(root.querySelector(".glance hui-test-card"));
+  assert.equal(cardHelpers.connected, connected, "det inbäddade kortet kopplades in igen");
+});

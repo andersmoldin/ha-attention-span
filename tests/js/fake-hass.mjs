@@ -105,8 +105,17 @@ export function entity(entityId, state, attributes = {}, minutes = 0) {
 }
 
 // Som HA:s loadCardHelpers: createCardElement ger ett kortelement med konfigurationen.
-// created räknar de kort som har skapats.
-export const cardHelpers = { created: 0 };
+// created räknar de kort som har skapats och connected gångerna ett kort kopplades in i
+// dokumentet; ett iframe- eller kamerakort laddas om varje gång det kopplas in igen.
+export const cardHelpers = { created: 0, connected: 0 };
+customElements.define(
+  "hui-test-card",
+  class extends HTMLElement {
+    connectedCallback() {
+      cardHelpers.connected += 1;
+    }
+  },
+);
 window.loadCardHelpers = async () => ({
   createCardElement: (config) => {
     cardHelpers.created += 1;

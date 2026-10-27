@@ -80,11 +80,14 @@ function setIcon(icon, name) {
 }
 
 // Lägger children i parent i den ordningen och flyttar bara det som inte redan står rätt.
+// Det som inte ska visas tas bort först, så att det som står kvar inte flyttas förbi det;
+// en flytt kopplar bort och in elementet igen, och ett inbäddat kort kan då laddas om.
 function placeChildren(parent, children) {
+  const shown = new Set(children);
+  for (const child of [...parent.children]) if (!shown.has(child)) child.remove();
   children.forEach((child, i) => {
     if (parent.children[i] !== child) parent.insertBefore(child, parent.children[i] ?? null);
   });
-  while (parent.children.length > children.length) parent.lastElementChild.remove();
 }
 
 function calmElement() {
