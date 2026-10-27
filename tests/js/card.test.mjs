@@ -6,6 +6,7 @@ import {
   entity,
   fakeHass,
   held,
+  icons,
   notice,
   renderCard,
   settled,
@@ -624,4 +625,97 @@ test("en entitet med gruppmedlemmar i group_entities räknas som en grupp", () =
   );
 
   assert.equal(text(root.querySelector(".notice")), "Fönster on · 2 av 3");
+});
+
+// Samma element i samma ordning.
+function same(before, after) {
+  return before.length === after.length && before.every((el, i) => el === after[i]);
+}
+
+// Flimret i 0.2.0: HA skickar hass vid varje tillståndsändring i hela systemet, och kortet
+// byggde då om allt så länge ett Förlopp visade en stapel. Nya ha-icon laddar sin ikon igen,
+// och en ikonuppsättning som hämtar svg hämtade då alla ikoner varje sekund.
+test("en ny hass skapar inga element igen medan Förloppets stapel följer tiden", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: NOW });
+  const klar = entity("sensor.diskmaskin_klar", "2026-10-26T08:40:00+00:00", {
+    device_class: "timestamp",
+  });
+  const notices = [
+    DISKEN,
+    notice("value_glance"),
+    notice("upcoming_quiet"),
+    notice("custom_glance"),
+  ];
+  const hass = fakeHass({ notices, values: [klar, BILEN] });
+  const root = renderCard(hass);
+  await settled();
+  const drawn = [...root.querySelectorAll("*")];
+  const loaded = icons.loaded;
+  const before = bar(root.querySelector(".notice"));
+
+  t.mock.timers.tick(1000);
+  const kok = { entity_id: "light.kok", state: "on", attributes: {} };
+  root.host.hass = { ...hass, states: { ...hass.states, [kok.entity_id]: kok } };
+
+  assert.ok(same(drawn, [...root.querySelectorAll("*")]), "elementen skapades om");
+  assert.equal(icons.loaded, loaded);
+  assert.ok(bar(root.querySelector(".notice")) > before, "stapeln stod still");
+});
+
+test("ett ändrat värde och en ny notis byter bara det som ändrats, inte ikonerna", () => {
+  const notices = [notice("value_glance"), notice("value_quiet")];
+  const hass = fakeHass({ notices, values: [BILEN, ELPRIS] });
+  const root = renderCard(hass);
+  const drawn = [...root.querySelectorAll("ha-icon")];
+  const loaded = icons.loaded;
+
+  const bilen = value("sensor.bilen_batteri", "53", "%");
+  root.host.hass = { ...hass, states: { ...hass.states, [bilen.entity_id]: bilen } };
+
+  assert.ok(same(drawn, [...root.querySelectorAll("ha-icon")]), "ikonerna skapades om");
+  assert.deepEqual([...root.querySelectorAll(".glance, .quiet")].map(text), [
+    "53 % Bilen",
+    "42 öre/kWh Elpris",
+  ]);
+
+  root.host.hass = fakeHass({
+    notices: [...notices, held("status_problem", 10)],
+    values: [bilen, ELPRIS, DORREN],
+  });
+
+  assert.equal(text(root.querySelector(".notice.problem")), "Ytterdörren Öppen i 10 min");
+  const rows = [...root.querySelectorAll(".glance ha-icon, .quiet ha-icon")];
+  assert.ok(same(drawn, rows), "ikonerna skapades om");
+  assert.equal(icons.loaded, loaded + 1);
+});
+
+test("en notis som byter nivå ritas bara på sin nya nivå", () => {
+  const hass = fakeHass({ notices: [notice("value_glance")], values: [BILEN] });
+  const root = renderCard(hass);
+  const shown = () => [...root.querySelectorAll(".notice, .glance, .quiet, .calm")].map(text);
+
+  const problem = notice("value_glance", { state: "problem" });
+  root.host.hass = fakeHass({ notices: [problem], values: [BILEN] });
+  assert.deepEqual(shown(), ["Bilen 52 %"]);
+
+  root.host.hass = hass;
+  assert.deepEqual(shown(), ["Allt är lugnt hemma.", "52 % Bilen"]);
+});
+
+test("en stapel och ett tryck som inte gäller längre tas bort från notisen", () => {
+  const procent = entity("sensor.diskmaskin_klar", "62", { unit_of_measurement: "%" });
+  const notices = [DISKEN, notice("status_group_ongoing", { state: "glance" })];
+  const groups = [fonster()];
+  const root = renderCard(fakeHass({ notices, values: [procent, ...WINDOWS], groups }));
+  assert.equal(bar(root.querySelector(".notice")), 62);
+  assert.equal(root.querySelector(".glance").getAttribute("role"), "button");
+
+  // Utan procent har Förloppet ingen stapel, och fönstren är inte längre en grupp.
+  const okand = entity("sensor.diskmaskin_klar", "okänt", { unit_of_measurement: "%" });
+  root.host.hass = fakeHass({ notices, values: [okand, ...WINDOWS, fonster()] });
+
+  assert.equal(bar(root.querySelector(".notice")), null);
+  const row = root.querySelector(".glance");
+  assert.equal(row.getAttribute("role"), null);
+  assert.equal(row.getAttribute("tabindex"), null);
 });

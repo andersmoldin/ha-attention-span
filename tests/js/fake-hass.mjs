@@ -116,6 +116,20 @@ window.loadCardHelpers = async () => ({
   },
 });
 
+// Som HA:s ha-icon: ett nytt element eller en ny ikon laddar ikonen, och en ikonuppsättning
+// som hämtar en svg per ikon gör då en ny hämtning. loaded räknar laddningarna.
+export const icons = { loaded: 0 };
+customElements.define(
+  "ha-icon",
+  class extends HTMLElement {
+    static observedAttributes = ["icon"];
+
+    attributeChangedCallback(_name, old, icon) {
+      if (icon !== old) icons.loaded += 1;
+    }
+  },
+);
+
 // Väntar tills kortet har laddat det som laddas i bakgrunden, till exempel loadCardHelpers.
 export function settled() {
   return new Promise((resolve) => setImmediate(resolve));
