@@ -130,6 +130,13 @@
             "hide": "Regeln är dold när villkoret gäller, oavsett nivåvillkoren."
           }
         },
+        "placement": {
+          "title": "Placering",
+          "description": "Välj var regeln står bland regler som kan hamna på samma nivå. Kortet visar notiserna i den ordningen inom varje nivå.",
+          "data": {
+            "placement": "Placering"
+          }
+        },
         "reason": {
           "title": "Orsak",
           "description": "Orsaken säger varför notisen visas och står under namnet på kortet. Välj en färdig mall eller skriv en egen template. Ett nytt val visar först sin förhandsvisning; skicka igen för att gå vidare.\n\nFörhandsvisning: **{preview}**",
@@ -164,7 +171,8 @@
         "invalid_action": "Varje åtgärd behöver en knapptext och precis ett tjänsteanrop utan templates, med tjänsten under action (inte service)."
       },
       "abort": {
-        "reconfigure_successful": "Regeln har ändrats."
+        "reconfigure_successful": "Regeln har ändrats.",
+        "rules_changed": "Reglerna ändrades medan formuläret var öppet. Börja om."
       }
     }
   },
@@ -233,5 +241,9 @@
     "days": "{count} d",
     "unavailable": "Otillgänglig",
     "unknown": "Okänd"
+  },
+  "placement": {
+    "first": "Först",
+    "after": "Efter {rule}"
   }
 }

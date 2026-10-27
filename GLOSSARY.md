@@ -28,6 +28,10 @@ _Avoid_: Description, subtitle
 A service call that a Rule offers as a button on its Notice, optionally with a confirmation text the household is asked first.
 _Avoid_: Command, shortcut
 
+**Placement** (placering):
+Where a Rule stands among the Rules that can reach the same Level, which decides the order of their Notices within a Level. Saved as the Rule's `priority`, lowest first.
+_Avoid_: Rank, weight
+
 **Availability watch** (tillgänglighetsbevakning):
 A household-wide setting that turns an integration that fails to load, or a chosen device that cannot be reached, into a Problem or Alarm after a set time. While it applies, Rules about the same device are Hidden.
 _Avoid_: Automatic problem, health check

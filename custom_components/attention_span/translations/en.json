@@ -130,6 +130,13 @@
             "hide": "The rule is hidden while this condition holds, whatever its level conditions."
           }
         },
+        "placement": {
+          "title": "Placement",
+          "description": "Choose where the rule stands among rules that can end up at the same level. The card shows the notices in that order within each level.",
+          "data": {
+            "placement": "Placement"
+          }
+        },
         "reason": {
           "title": "Reason",
           "description": "The reason says why the notice is shown and appears under its name on the card. Pick a ready-made template or write your own. A new choice first shows its preview; submit again to continue.\n\nPreview: **{preview}**",
@@ -164,7 +171,8 @@
         "invalid_action": "Each action needs a button text and exactly one service call without templates, with the service under action (not service)."
       },
       "abort": {
-        "reconfigure_successful": "The rule has been updated."
+        "reconfigure_successful": "The rule has been updated.",
+        "rules_changed": "The rules changed while the form was open. Start over."
       }
     }
   },
@@ -233,5 +241,9 @@
     "days": "{count} d",
     "unavailable": "Unavailable",
     "unknown": "Unknown"
+  },
+  "placement": {
+    "first": "First",
+    "after": "After {rule}"
   }
 }

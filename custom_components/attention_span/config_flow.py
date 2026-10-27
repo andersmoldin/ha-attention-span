@@ -12,6 +12,7 @@ from homeassistant.config_entries import (
     ConfigEntry,
     ConfigFlow,
     ConfigFlowResult,
+    ConfigSubentry,
     ConfigSubentryFlow,
     SubentryFlowResult,
 )
@@ -36,6 +37,7 @@ from homeassistant.helpers.selector import (
     NumberSelectorMode,
     ObjectSelector,
     ObjectSelectorConfig,
+    SelectOptionDict,
     SelectSelector,
     SelectSelectorConfig,
     SelectSelectorMode,
@@ -43,6 +45,7 @@ from homeassistant.helpers.selector import (
     TextSelector,
 )
 from homeassistant.helpers.template import is_template_string
+from homeassistant.helpers.translation import async_get_translations
 
 from .const import (
     ALWAYS,
@@ -94,6 +97,10 @@ NO_PREVIEW = "–"
 ACTION_NAME = "name"
 ACTION_CALL = "action"
 ACTION_CONFIRMATION = "confirmation"
+# Placeringen: först bland reglerna som kan hamna på samma nivå, annars id för regeln
+# den står efter.
+CONF_PLACEMENT = "placement"
+PLACEMENT_FIRST = "first"
 # Det i ett tjänsteanrop från HA:s åtgärdsväljare som kortet kan anropa. metadata och alias
 # lägger väljaren själv till och påverkar inte anropet.
 _ACTION_KEYS = {"action", "target", "data", "metadata", "alias"}
@@ -345,6 +352,9 @@ class RuleSubentryFlow(ConfigSubentryFlow):
     _previewed: tuple[str, str | None] | None = None
     # Det formuläret visar från början: regeln som ändras, eller inget för en ny regel.
     _current: Mapping[str, Any] = {}
+    # Placeringen som valts: PLACEMENT_FIRST eller regeln den står efter. None när formuläret
+    # inte frågade, för att ingen annan regel kan hamna på samma nivå.
+    _placement: str | None = None
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> SubentryFlowResult:
         if user_input is not None:
@@ -383,7 +393,7 @@ class RuleSubentryFlow(ConfigSubentryFlow):
     async def async_step_reconfigure(
         self, user_input: dict[str, Any] | None = None
     ) -> SubentryFlowResult:
-        """Ändra regeln. Typ och placering behålls."""
+        """Ändra regeln. Typen behålls."""
         subentry = self._get_reconfigure_subentry()
         data = subentry.data
         self._type = data[CONF_TYPE]
@@ -459,7 +469,7 @@ class RuleSubentryFlow(ConfigSubentryFlow):
                     errors[field] = "invalid_condition"
             if not errors:
                 self._conditions = user_input
-                return await self.async_step_reason()
+                return await self.async_step_placement()
         current = user_input or {
             **{
                 level: value
@@ -485,6 +495,83 @@ class RuleSubentryFlow(ConfigSubentryFlow):
             ),
             errors=errors,
         )
+
+    async def async_step_placement(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Var regeln står bland reglerna som kan hamna på samma nivå: först eller efter en av dem.
+
+        Hoppas över när ingen annan regel kan hamna på samma nivå.
+        """
+        peers = self._peers()
+        if not peers:
+            return await self.async_step_reason()
+        if user_input is not None:
+            self._placement = user_input[CONF_PLACEMENT]
+            return await self.async_step_reason()
+        words = await self._async_placement_words()
+        options = [SelectOptionDict(value=PLACEMENT_FIRST, label=words["first"])] + [
+            SelectOptionDict(value=peer.subentry_id, label=words["after"].format(rule=peer.title))
+            for peer in peers
+        ]
+        return self.async_show_form(
+            step_id="placement",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_PLACEMENT, default=self._placement_now(peers)): (
+                        SelectSelector(
+                            SelectSelectorConfig(options=options, mode=SelectSelectorMode.DROPDOWN)
+                        )
+                    ),
+                }
+            ),
+        )
+
+    def _rules(self) -> list[ConfigSubentry]:
+        """Alla regler i ordningen, lägst ordningstal först."""
+        rules = self._get_entry().get_subentries_of_type(SUBENTRY_RULE)
+        return sorted(rules, key=lambda rule: (rule.data[CONF_PRIORITY], rule.subentry_id))
+
+    def _own_id(self) -> str | None:
+        """Regeln som ändras, eller None för en ny regel."""
+        if self.source != SOURCE_RECONFIGURE:
+            return None
+        return self._get_reconfigure_subentry().subentry_id
+
+    def _peers(self) -> list[ConfigSubentry]:
+        """De andra reglerna som delar minst en nivå med den här, i ordningen."""
+        levels = set(self._modes)
+        own = self._own_id()
+        return [
+            rule
+            for rule in self._rules()
+            if rule.subentry_id != own and levels & set(rule.data[CONF_LEVELS])
+        ]
+
+    def _placement_now(self, peers: list[ConfigSubentry]) -> str:
+        """Förvalet: placeringen där regeln står nu, och för en ny regel sist."""
+        position = self._position([peer.subentry_id for peer in peers])
+        return peers[position - 1].subentry_id if position else PLACEMENT_FIRST
+
+    def _position(self, peers: list[str]) -> int:
+        """Hur många av reglerna på samma nivå som står före regeln nu; för en ny regel alla."""
+        own = self._own_id()
+        if own is None:
+            return len(peers)
+        ids = [rule.subentry_id for rule in self._rules()]
+        return sum(ids.index(peer) < ids.index(own) for peer in peers)
+
+    async def _async_placement_words(self) -> dict[str, str]:
+        """Texterna för valen, på hemmets språk."""
+        prefix = f"component.{DOMAIN}.placement."
+        translations = await async_get_translations(
+            self.hass, self.hass.config.language, "placement", [DOMAIN]
+        )
+        return {
+            key.removeprefix(prefix): text
+            for key, text in translations.items()
+            if key.startswith(prefix)
+        }
 
     async def async_step_reason(
         self, user_input: dict[str, Any] | None = None
@@ -610,13 +697,45 @@ class RuleSubentryFlow(ConfigSubentryFlow):
         if actions:
             data[CONF_ACTIONS] = actions
         title = self._fields[CONF_NAME].strip()
+        priority = self._async_place()
+        if priority is None:
+            return self.async_abort(reason="rules_changed")
+        data[CONF_PRIORITY] = priority
         if self.source == SOURCE_RECONFIGURE:
-            subentry = self._get_reconfigure_subentry()
-            data[CONF_PRIORITY] = subentry.data[CONF_PRIORITY]
             return self.async_update_and_abort(
-                self._get_entry(), subentry, title=title, data=data
+                self._get_entry(), self._get_reconfigure_subentry(), title=title, data=data
             )
-        # Ny regel hamnar sist i ordningen.
-        rules = self._get_entry().get_subentries_of_type(SUBENTRY_RULE)
-        data[CONF_PRIORITY] = 1 + max((sub.data[CONF_PRIORITY] for sub in rules), default=0)
         return self.async_create_entry(title=title, data=data)
+
+    def _async_place(self) -> int | None:
+        """Ställ regeln där placeringen säger och returnera dess ordningstal.
+
+        Står regeln redan där bland reglerna på samma nivå behåller en ändrad regel sitt tal
+        och en ny hamnar sist. Annars numreras alla regler om från 1, och de andra regler vars
+        tal ändras sparas. None när regeln som placeringen utgår från har tagits bort under tiden.
+        """
+        rules = self._rules()
+        own = self._own_id()
+        peers = [peer.subentry_id for peer in self._peers()]
+        if self._placement in (None, PLACEMENT_FIRST):
+            position = 0
+        elif self._placement in peers:
+            position = peers.index(self._placement) + 1
+        else:
+            return None
+        if self._placement is None or position == self._position(peers):
+            if own is not None:
+                return int(self._get_reconfigure_subentry().data[CONF_PRIORITY])
+            return 1 + max((rule.data[CONF_PRIORITY] for rule in rules), default=0)
+        ids: list[str | None] = [rule.subentry_id for rule in rules if rule.subentry_id != own]
+        # Före den första regeln på samma nivå, eller direkt efter den som valts.
+        index = ids.index(peers[0]) if position == 0 else ids.index(peers[position - 1]) + 1
+        placed = [*ids[:index], own, *ids[index:]]
+        entry = self._get_entry()
+        for number, rule in enumerate(placed, start=1):
+            subentry = entry.subentries[rule] if rule is not None and rule != own else None
+            if subentry is not None and subentry.data[CONF_PRIORITY] != number:
+                self.hass.config_entries.async_update_subentry(
+                    entry, subentry, data={**subentry.data, CONF_PRIORITY: number}
+                )
+        return placed.index(own) + 1
