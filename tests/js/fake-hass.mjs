@@ -105,8 +105,17 @@ export function entity(entityId, state, attributes = {}, minutes = 0) {
 }
 
 // Som HA:s loadCardHelpers: createCardElement ger ett kortelement med konfigurationen.
-// created räknar de kort som har skapats.
-export const cardHelpers = { created: 0 };
+// created räknar de kort som har skapats och connected gångerna ett kort kopplades in i
+// dokumentet; ett iframe- eller kamerakort laddas om varje gång det kopplas in igen.
+export const cardHelpers = { created: 0, connected: 0 };
+customElements.define(
+  "hui-test-card",
+  class extends HTMLElement {
+    connectedCallback() {
+      cardHelpers.connected += 1;
+    }
+  },
+);
 window.loadCardHelpers = async () => ({
   createCardElement: (config) => {
     cardHelpers.created += 1;
@@ -115,6 +124,20 @@ window.loadCardHelpers = async () => ({
     return el;
   },
 });
+
+// Som HA:s ha-icon: ett nytt element eller en ny ikon laddar ikonen, och en ikonuppsättning
+// som hämtar en svg per ikon gör då en ny hämtning. loaded räknar laddningarna.
+export const icons = { loaded: 0 };
+customElements.define(
+  "ha-icon",
+  class extends HTMLElement {
+    static observedAttributes = ["icon"];
+
+    attributeChangedCallback(_name, old, icon) {
+      if (icon !== old) icons.loaded += 1;
+    }
+  },
+);
 
 // Väntar tills kortet har laddat det som laddas i bakgrunden, till exempel loadCardHelpers.
 export function settled() {
