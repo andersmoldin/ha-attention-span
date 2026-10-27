@@ -250,6 +250,27 @@ async def test_a_break_that_started_before_a_restart_counts_toward_the_flap_limi
         assert state.attributes["acknowledged"] is False
 
 
+async def test_a_break_longer_than_the_flap_limit_across_a_restart_lets_go_when_the_alarm_is_back(
+    hass: HomeAssistant, freezer
+):
+    freezer.move_to(FIXTURE_TIME)
+    await set_leak(hass, "on")
+    await add_leak_rule(hass)
+    await acknowledge(hass)
+    await set_leak(hass, "off")
+    await tick(hass, freezer, timedelta(minutes=3))
+
+    async with restart(hass) as hass:
+        freezer.tick(timedelta(minutes=7))
+        hass.states.async_set("binary_sensor.lacka", "on")
+        await start(hass)
+
+        state = hass.states.get("sensor.attention_span_lackan")
+        assert state.state == "alarm"
+        assert state.attributes["acknowledged"] is False
+        assert state.attributes["realarm_at"] is None
+
+
 async def test_an_alarm_set_to_alarm_again_after_2_hours_does_so(hass: HomeAssistant, freezer):
     freezer.move_to(FIXTURE_TIME)
     await set_leak(hass, "on")

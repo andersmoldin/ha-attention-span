@@ -106,7 +106,10 @@ class Acknowledgement:
 
     @callback
     def async_level(self, level: str) -> None:
-        """Regelns nivå efter en omräkning."""
+        """Regelns nivå efter en omräkning. Ett avbrott eller en «larma igen» som redan har gått
+        ut räknas innan nivån ändrar dem, också när det skedde under en omstart."""
+        if self._acknowledged:
+            self._async_expired()
         if level == ALARM:
             self._released = None
         elif self._released is None:
