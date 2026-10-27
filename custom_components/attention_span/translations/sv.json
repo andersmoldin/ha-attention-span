@@ -231,7 +231,7 @@
     "minutes": "{count} min",
     "hours": "{count} tim",
     "days": "{count} d",
-    "unavailable": "Ej tillgänglig",
+    "unavailable": "Otillgänglig",
     "unknown": "Okänd"
   }
 }

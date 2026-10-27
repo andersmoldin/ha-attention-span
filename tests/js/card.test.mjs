@@ -210,7 +210,7 @@ test("notiser av en Typ som kortet inte känner till ritas inte som Värde", () 
   assert.equal(root.querySelectorAll(".glance, .quiet").length, 0);
 });
 
-const FINDUS = status("vacuum.findus", "Ej tillgänglig", 3 * 60);
+const FINDUS = status("vacuum.findus", "Otillgänglig", 3 * 60);
 const DORREN = status("binary_sensor.ytterdorr", "Öppen", 10);
 const TVATTEN = status("sensor.tvattmaskin", "Kör", 25);
 
@@ -231,7 +231,7 @@ test("Larm, Problem och Pågår ritas som egna kort i den ordningen, över Blick
   assert.deepEqual(
     parts.map((el) => [el.className, text(el)]),
     [
-      ["notice alarm", "Findus Ej tillgänglig i 3 tim"],
+      ["notice alarm", "Findus Otillgänglig i 3 tim"],
       ["notice problem", "Ytterdörren Öppen i 10 min"],
       ["notice ongoing", "Tvätten Kör i 25 min"],
       ["glance", "52 % Bilen"],

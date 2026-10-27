@@ -162,7 +162,7 @@ async def test_a_reason_that_renders_empty_or_fails_is_none(hass: HomeAssistant)
         ("sensor.skrivare", "62", {"unit_of_measurement": "%"}, "62 %"),
         # Utan tid kvar eller ett tal visas tillståndet på hemmets språk, utan enhet.
         ("timer.agg", "idle", {"duration": "0:08:00"}, "Inaktiv"),
-        ("sensor.skrivare", "unavailable", {"unit_of_measurement": "%"}, "Ej tillgänglig"),
+        ("sensor.skrivare", "unavailable", {"unit_of_measurement": "%"}, "Otillgänglig"),
         ("sensor.skrivare", "unknown", {"unit_of_measurement": "%"}, "Okänd"),
     ],
 )
@@ -208,7 +208,7 @@ async def test_the_preset_for_value_shows_the_number_with_its_unit(hass: HomeAss
 
 
 @pytest.mark.parametrize(
-    ("state", "expected"), [("unavailable", "Ej tillgänglig"), ("unknown", "Okänd")]
+    ("state", "expected"), [("unavailable", "Otillgänglig"), ("unknown", "Okänd")]
 )
 async def test_the_preset_for_value_shows_a_missing_value_in_the_household_language(
     hass: HomeAssistant, swedish, state: str, expected: str
@@ -240,7 +240,7 @@ async def test_the_preset_for_status_shows_an_unavailable_state_in_the_household
         hass, entry, "status", YTTERDORREN, ALWAYS_ONGOING, reason={"reason": "state_for"}
     )
 
-    assert reason(hass, "sensor.attention_span_ytterdorren") == "Ej tillgänglig i 10 min"
+    assert reason(hass, "sensor.attention_span_ytterdorren") == "Otillgänglig i 10 min"
 
 
 async def test_a_new_state_is_written_once_with_its_reason_and_state_since(
