@@ -144,9 +144,9 @@ Attributnamnen är ett versionerat, dokumenterat kontrakt så att tredjepartskor
 | `source` | `rule`, `device` eller `integrations` |
 | `type` | `status`, `progress`, `value`, `upcoming` eller `custom` |
 | `priority` | Regelns ordningstal; tomt för Tillgänglighet |
-| `reason` | Orsakstexten, färdigrenderad |
+| `reason` | Orsakstexten, färdigrenderad på hemmets språk; `null` när regeln saknar orsak eller texten är tom |
 | `entities` | De entiteter typen visar |
-| `actions` | Åtgärder som kortet visar som knappar |
+| `actions` | Åtgärder som kortet visar som knappar. Varje åtgärd har `name` (knappens text), `action` («domän.tjänst»), `target`, `data` och `confirmation` (texten kortet frågar med innan tjänsten anropas, eller `null`) |
 | `since` | När nuvarande nivå började gälla |
 | `acknowledged` | Om larmet är kvitterat |
 | `realarm_at` | När ett kvitterat larm larmar igen |

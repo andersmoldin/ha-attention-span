@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
@@ -16,6 +17,7 @@ from homeassistant.util import dt as dt_util
 from homeassistant.util import slugify
 
 from .const import (
+    CONF_ACTIONS,
     CONF_CARD,
     CONF_COUNT,
     CONF_ENTITIES,
@@ -23,6 +25,8 @@ from .const import (
     CONF_ICON,
     CONF_LEVELS,
     CONF_PRIORITY,
+    CONF_REASON,
+    CONF_REASON_TEMPLATE,
     CONF_TYPE,
     CONTRACT_VERSION,
     DOMAIN,
@@ -35,8 +39,11 @@ from .const import (
     TYPE_UPCOMING,
 )
 from .evaluation import RuleLevel
+from .reason import REASON_NONE, Reason, async_variables, parse_since, reason_source
 from .since import DATA_SINCE, SavedRule, SavedState
 from .upcoming import Occurrence, Upcoming
+
+_LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_entry(
@@ -54,6 +61,8 @@ class RuleSensor(SensorEntity, RestoreEntity):
     _attr_translation_key = "rule"
     _attr_has_entity_name = True
     _attr_should_poll = False
+    # Orsaken, när regeln har en. Den startas när HA har startat.
+    _reason: Reason | None = None
 
     def __init__(self, subentry: ConfigSubentry) -> None:
         data = subentry.data
@@ -70,6 +79,7 @@ class RuleSensor(SensorEntity, RestoreEntity):
             "priority": data[CONF_PRIORITY],
             "reason": None,
             "entities": list(data[CONF_ENTITIES]),
+            "actions": list(data.get(CONF_ACTIONS, [])),
             "since": dt_util.utcnow().isoformat(),
         }
         if data[CONF_TYPE] == TYPE_STATUS:
@@ -113,6 +123,14 @@ class RuleSensor(SensorEntity, RestoreEntity):
         self.async_on_remove(async_at_started(self.hass, self._async_start))
 
     async def _async_start(self, hass: HomeAssistant) -> None:
+        reason = self._rule.get(CONF_REASON, REASON_NONE)
+        source = reason_source(self._rule[CONF_TYPE], reason, self._rule.get(CONF_REASON_TEMPLATE))
+        if source is None and reason != REASON_NONE:
+            # Till exempel en färdig mall som inte finns i den här versionen.
+            _LOGGER.error("Regeln %s har orsaken %s, som inte finns", self.entity_id, reason)
+        if source is not None:
+            variables = await async_variables(hass, self._rule[CONF_ENTITIES])
+            self._reason = Reason(hass, source, variables, self._async_reason_changed)
         if self._rule[CONF_TYPE] == TYPE_STATUS:
             self._async_shown_changed()
             self.async_on_remove(
@@ -127,6 +145,16 @@ class RuleSensor(SensorEntity, RestoreEntity):
                 hass, self._rule[CONF_ENTITIES], self._rule[CONF_COUNT], self._async_occurrences
             )
             self.async_on_remove(await upcoming.async_start())
+        # Sist, så att orsaken renderas med det som Status och Kommande redan vet.
+        if self._reason is not None:
+            self.async_on_remove(self._reason.async_start())
+
+    @callback
+    def _async_reason_changed(self, reason: str | None) -> None:
+        if reason == self._attr_extra_state_attributes["reason"]:
+            return
+        self._attr_extra_state_attributes["reason"] = reason
+        self.async_write_ha_state()
 
     @callback
     def _async_occurrences(self, occurrences: list[Occurrence]) -> None:
@@ -134,6 +162,8 @@ class RuleSensor(SensorEntity, RestoreEntity):
             return
         self._attr_extra_state_attributes["occurrences"] = occurrences
         self.async_write_ha_state()
+        if self._reason is not None:
+            self._reason.async_set(occurrences=occurrences)
 
     @callback
     def _async_shown_changed(self, _: Event[EventStateChangedData] | None = None) -> None:
@@ -159,6 +189,8 @@ class RuleSensor(SensorEntity, RestoreEntity):
                 )
                 since = self._shown["since"]
         self._async_save()
+        if self._reason is not None:
+            self._reason.async_set(state_since=parse_since(since))
         if since != self._attr_extra_state_attributes["state_since"]:
             self._attr_extra_state_attributes["state_since"] = since
             self.async_write_ha_state()

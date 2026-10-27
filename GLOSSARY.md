@@ -20,6 +20,14 @@ _Avoid_: Step, threshold
 A condition of a Rule that, when it holds, makes the Rule Hidden regardless of its Level conditions.
 _Avoid_: Exception, override
 
+**Reason** (orsak):
+The short text on a Notice that says why it is shown, from a ready-made template for the Type or an own template.
+_Avoid_: Description, subtitle
+
+**Action** (åtgärd):
+A service call that a Rule offers as a button on its Notice, optionally with a confirmation text the household is asked first.
+_Avoid_: Command, shortcut
+
 **Availability watch** (tillgänglighetsbevakning):
 A household-wide setting that turns an integration that fails to load, or a chosen device that cannot be reached, into a Problem or Alarm after a set time. While it applies, Rules about the same device are Hidden.
 _Avoid_: Automatic problem, health check

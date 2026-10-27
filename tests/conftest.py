@@ -112,11 +112,14 @@ async def add_rule(
     fields: dict,
     levels: dict[str, str],
     conditions: dict[str, list] | None = None,
+    reason: dict | None = None,
+    actions: list[dict] | None = None,
 ) -> str:
     """Lägg till en Rule via subentry-flödet och returnera subentryns id.
 
     levels är Inget, Alltid eller Villkor per nivå (utelämnad nivå är Inget) och
-    conditions villkoren för nivåerna med Villkor och för Dölj när.
+    conditions villkoren för nivåerna med Villkor och för Dölj när. reason är
+    orsaksstegets fält (utelämnat är ingen orsak) och actions åtgärderna.
     """
     before = set(entry.subentries)
     result = await start_rule(hass, entry, rule_type)
@@ -129,6 +132,7 @@ async def add_rule(
     result = await hass.config_entries.subentries.async_configure(
         result["flow_id"], conditions or {}
     )
+    result = await submit_reason_and_actions(hass, result, reason, actions)
     assert result["type"] is FlowResultType.CREATE_ENTRY
     await hass.async_block_till_done()
     (added,) = set(entry.subentries) - before
@@ -142,8 +146,10 @@ async def reconfigure_rule(
     fields: dict,
     levels: dict[str, str],
     conditions: dict[str, list] | None = None,
+    reason: dict | None = None,
+    actions: list[dict] | None = None,
 ) -> None:
-    """Ändra en Rule; levels och conditions som i add_rule."""
+    """Ändra en Rule; levels, conditions, reason och actions som i add_rule."""
     result = await start_rule_reconfigure(hass, entry, subentry_id)
     result = await hass.config_entries.subentries.async_configure(result["flow_id"], fields)
     assert result["step_id"] == "levels"
@@ -154,9 +160,29 @@ async def reconfigure_rule(
     result = await hass.config_entries.subentries.async_configure(
         result["flow_id"], conditions or {}
     )
+    result = await submit_reason_and_actions(hass, result, reason, actions)
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "reconfigure_successful"
     await hass.async_block_till_done()
+
+
+async def submit_reason(hass: HomeAssistant, result: FlowResult, reason: dict) -> FlowResult:
+    """Fyll i orsaken. Ett nytt val visar först sin förhandsvisning; skicka då samma igen."""
+    assert result["step_id"] == "reason"
+    result = await hass.config_entries.subentries.async_configure(result["flow_id"], reason)
+    if result.get("step_id") == "reason" and not result.get("errors"):
+        result = await hass.config_entries.subentries.async_configure(result["flow_id"], reason)
+    return result
+
+
+async def submit_reason_and_actions(
+    hass: HomeAssistant, result: FlowResult, reason: dict | None, actions: list[dict] | None
+) -> FlowResult:
+    result = await submit_reason(hass, result, reason or {"reason": "none"})
+    assert result["step_id"] == "actions"
+    return await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {"actions": actions or []}
+    )
 
 
 def state_as_contract(hass: HomeAssistant, entity_id: str) -> dict | None:

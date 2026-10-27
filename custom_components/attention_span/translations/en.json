@@ -129,6 +129,27 @@
           "data_description": {
             "hide": "The rule is hidden while this condition holds, whatever its level conditions."
           }
+        },
+        "reason": {
+          "title": "Reason",
+          "description": "The reason says why the notice is shown and appears under its name on the card. Pick a ready-made template or write your own. A new choice first shows its preview; submit again to continue.\n\nPreview: **{preview}**",
+          "data": {
+            "reason": "Reason",
+            "reason_template": "Own template"
+          },
+          "data_description": {
+            "reason_template": "Used with «Own template…». The template can read entity (the entity the notice shows), entities, state_since (when the state began, for Status) and occurrences (the occurrences, for Upcoming)."
+          }
+        },
+        "actions": {
+          "title": "Actions",
+          "description": "Actions become buttons on the notice that call a service, for example restarting the vacuum. With a confirmation text the card asks first.",
+          "data": {
+            "actions": "Actions"
+          },
+          "data_description": {
+            "actions": "Each action is one service call without templates."
+          }
         }
       },
       "error": {
@@ -138,7 +159,9 @@
         "invalid_condition": "The condition is not valid.",
         "progress_entity": "Choose a timer, a sensor with an end time or with time left, or a sensor in percent.",
         "entities_required": "Choose at least one calendar or sensor.",
-        "invalid_card": "Enter a card configuration with a type, for example type: weather-forecast."
+        "invalid_card": "Enter a card configuration with a type, for example type: weather-forecast.",
+        "template_required": "Write a template, or pick a ready-made one.",
+        "invalid_action": "Each action needs a button text and exactly one service call without templates."
       },
       "abort": {
         "reconfigure_successful": "The rule has been updated."
@@ -161,6 +184,30 @@
         "always": "Always",
         "condition": "Condition"
       }
+    },
+    "reason": {
+      "options": {
+        "none": "None (the card shows what the type shows)",
+        "state_for": "State and how long, for example «Open for 10 min»",
+        "time_left": "Time left, for example «40 min left»",
+        "value": "The value, for example «52 %»",
+        "next": "Next occurrence, for example «Next: Garbage collection»",
+        "custom": "Own template…"
+      }
+    },
+    "actions": {
+      "fields": {
+        "name": {
+          "name": "Button text"
+        },
+        "action": {
+          "name": "Service call"
+        },
+        "confirmation": {
+          "name": "Confirmation text",
+          "description": "Optional. The card asks with this text before calling the service."
+        }
+      }
     }
   },
   "entity": {
@@ -176,5 +223,13 @@
         }
       }
     }
+  },
+  "reason": {
+    "state_for": "{state} for {duration}",
+    "time_left": "{duration} left",
+    "next": "Next: {next}",
+    "minutes": "{count} min",
+    "hours": "{count} h",
+    "days": "{count} d"
   }
 }

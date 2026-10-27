@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from datetime import datetime
 from typing import Any
 
 from homeassistant.components.sensor import SensorDeviceClass
@@ -21,8 +22,11 @@ from homeassistant.const import (
     PERCENTAGE,
 )
 from homeassistant.core import HomeAssistant, State, callback
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import HomeAssistantError, TemplateError
+from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.selector import (
+    ActionSelector,
     ConditionSelector,
     EntitySelector,
     EntitySelectorConfig,
@@ -31,14 +35,18 @@ from homeassistant.helpers.selector import (
     NumberSelectorConfig,
     NumberSelectorMode,
     ObjectSelector,
+    ObjectSelectorConfig,
     SelectSelector,
     SelectSelectorConfig,
     SelectSelectorMode,
+    TemplateSelector,
     TextSelector,
 )
+from homeassistant.helpers.template import is_template_string
 
 from .const import (
     ALWAYS,
+    CONF_ACTIONS,
     CONF_CARD,
     CONF_COUNT,
     CONF_ENTITIES,
@@ -46,6 +54,8 @@ from .const import (
     CONF_ICON,
     CONF_LEVELS,
     CONF_PRIORITY,
+    CONF_REASON,
+    CONF_REASON_TEMPLATE,
     CONF_TYPE,
     DOMAIN,
     LEVELS,
@@ -58,7 +68,17 @@ from .const import (
     TYPES,
 )
 from .evaluation import async_validate_conditions
+from .reason import (
+    REASON_CUSTOM,
+    REASON_NONE,
+    async_render,
+    async_variables,
+    parse_since,
+    reason_choices,
+    reason_source,
+)
 from .schema import vol
+from .upcoming import async_occurrences
 
 # Formulärfält som inte sparas med samma form som i regeln.
 CONF_ENTITY = "entity"
@@ -68,6 +88,15 @@ LEVEL_CONDITION = "condition"
 LEVEL_MODES = (LEVEL_NONE, ALWAYS, LEVEL_CONDITION)
 # Flest tillfällen som Kommande kan visa; fler får inte plats på en rad.
 MAX_COUNT = 10
+# Förhandsvisningen när orsaken är tom eller regeln inte har någon.
+NO_PREVIEW = "–"
+# En åtgärds fält i formuläret: knappens text, tjänsteanropet och en valfri bekräftelsetext.
+ACTION_NAME = "name"
+ACTION_CALL = "action"
+ACTION_CONFIRMATION = "confirmation"
+# Det i ett tjänsteanrop från HA:s åtgärdsväljare som kortet kan anropa. metadata och alias
+# lägger väljaren själv till och påverkar inte anropet.
+_ACTION_KEYS = {"action", "service", "target", "data", "metadata", "alias"}
 
 
 class AttentionSpanConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -222,12 +251,98 @@ def _level_modes(levels: Mapping[str, Any]) -> dict[str, str]:
     }
 
 
+def _reason_choice(user_input: Mapping[str, Any]) -> tuple[str, str | None]:
+    """Orsaken som valts: valet och, för egen template, templaten."""
+    reason = user_input.get(CONF_REASON, REASON_NONE)
+    template = (user_input.get(CONF_REASON_TEMPLATE) or "").strip() or None
+    return reason, template if reason == REASON_CUSTOM else None
+
+
+def _reason_errors(choice: tuple[str, str | None]) -> dict[str, str]:
+    """Fel i orsaken. Templatens syntax kontrolleras redan av HA:s templateväljare."""
+    reason, template = choice
+    if reason == REASON_CUSTOM and template is None:
+        return {CONF_REASON_TEMPLATE: "template_required"}
+    return {}
+
+
+def _actions_selector() -> ObjectSelector:
+    """En lista med åtgärder: knappens text, ett tjänsteanrop och en valfri bekräftelsetext."""
+    return ObjectSelector(
+        ObjectSelectorConfig(
+            fields={
+                ACTION_NAME: {"selector": TextSelector(), "required": True},
+                ACTION_CALL: {"selector": ActionSelector(), "required": True},
+                ACTION_CONFIRMATION: {"selector": TextSelector()},
+            },
+            multiple=True,
+            label_field=ACTION_NAME,
+            translation_key=CONF_ACTIONS,
+        )
+    )
+
+
+def _has_template(value: Any) -> bool:
+    """Om någon text i ett tjänsteanrop är en template."""
+    if isinstance(value, str):
+        return is_template_string(value)
+    if isinstance(value, Mapping):
+        return any(_has_template(item) for item in value.values())
+    if isinstance(value, list):
+        return any(_has_template(item) for item in value)
+    return False
+
+
+def _action(field: Mapping[str, Any]) -> dict[str, Any]:
+    """En åtgärd ur formuläret, som den sparas och visas i attributet actions.
+
+    Ger vol.Invalid om den inte är precis ett tjänsteanrop utan templates, eftersom kortet
+    anropar tjänsten som den står, som en knapp i Lovelace.
+    """
+    name = str(field.get(ACTION_NAME) or "").strip()
+    calls = field.get(ACTION_CALL)
+    calls = calls if isinstance(calls, list) else [calls]
+    if not name or len(calls) != 1 or not isinstance(call := calls[0], Mapping):
+        raise vol.Invalid("En åtgärd är en knapptext och ett tjänsteanrop")
+    if set(call) - _ACTION_KEYS or _has_template(call):
+        raise vol.Invalid("Bara tjänsteanrop utan templates går att visa som knapp")
+    target = call.get("target") or {}
+    data = call.get("data") or {}
+    if not isinstance(target, Mapping) or not isinstance(data, Mapping):
+        raise vol.Invalid("target och data ska vara objekt")
+    action: dict[str, Any] = {
+        "name": name,
+        "action": cv.service(call.get("action", call.get("service"))),
+        "target": dict(target),
+        "data": dict(data),
+        "confirmation": str(field.get(ACTION_CONFIRMATION) or "").strip() or None,
+    }
+    return action
+
+
+def _action_fields(action: Mapping[str, Any]) -> dict[str, Any]:
+    """Formulärets fält för en sparad åtgärd."""
+    call: dict[str, Any] = {"action": action["action"]}
+    if action["target"]:
+        call["target"] = action["target"]
+    if action["data"]:
+        call["data"] = action["data"]
+    fields = {ACTION_NAME: action["name"], ACTION_CALL: [call]}
+    if action["confirmation"]:
+        fields[ACTION_CONFIRMATION] = action["confirmation"]
+    return fields
+
+
 class RuleSubentryFlow(ConfigSubentryFlow):
     """Lägg till eller ändra en Rule: Typ, typens fält, en rad per nivå och sist villkoren."""
 
     _type: str
     _fields: dict[str, Any]
     _modes: dict[str, str]
+    _conditions: dict[str, Any]
+    _reason: tuple[str, str | None]
+    # Orsaken som förhandsvisningen visar: valet och, för egen template, templaten.
+    _previewed: tuple[str, str | None] | None = None
     # Det formuläret visar från början: regeln som ändras, eller inget för en ny regel.
     _current: Mapping[str, Any] = {}
 
@@ -278,6 +393,9 @@ class RuleSubentryFlow(ConfigSubentryFlow):
             **_shown_fields(data),
             CONF_LEVELS: data[CONF_LEVELS],
             CONF_HIDE: data.get(CONF_HIDE),
+            CONF_REASON: data.get(CONF_REASON, REASON_NONE),
+            CONF_REASON_TEMPLATE: data.get(CONF_REASON_TEMPLATE),
+            CONF_ACTIONS: [_action_fields(action) for action in data.get(CONF_ACTIONS, [])],
         }
         return await self._async_step_fields("reconfigure", user_input)
 
@@ -340,7 +458,8 @@ class RuleSubentryFlow(ConfigSubentryFlow):
                 except (vol.Invalid, HomeAssistantError):
                     errors[field] = "invalid_condition"
             if not errors:
-                return self._async_finish(user_input)
+                self._conditions = user_input
+                return await self.async_step_reason()
         current = user_input or {
             **{
                 level: value
@@ -367,7 +486,110 @@ class RuleSubentryFlow(ConfigSubentryFlow):
             errors=errors,
         )
 
-    def _async_finish(self, conditions: Mapping[str, Any]) -> SubentryFlowResult:
+    async def async_step_reason(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Orsaken, med en förhandsvisning med aktuella värden.
+
+        Ett nytt val visar först sin förhandsvisning; skickas samma val igen går flödet vidare.
+        """
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            choice = _reason_choice(user_input)
+            errors = _reason_errors(choice)
+            if not errors and choice == self._previewed:
+                self._reason = choice
+                return await self.async_step_actions()
+        current = user_input or self._current
+        choice = _reason_choice(current)
+        preview = NO_PREVIEW
+        if not errors:
+            self._previewed = choice
+            preview = await self._async_preview(choice)
+        return self.async_show_form(
+            step_id="reason",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_REASON, default=choice[0]): _select(
+                        reason_choices(self._type), CONF_REASON, SelectSelectorMode.DROPDOWN
+                    ),
+                    vol.Optional(
+                        CONF_REASON_TEMPLATE,
+                        description={"suggested_value": current.get(CONF_REASON_TEMPLATE)},
+                    ): TemplateSelector(),
+                }
+            ),
+            errors=errors,
+            description_placeholders={"preview": preview},
+        )
+
+    async def _async_preview(self, choice: tuple[str, str | None]) -> str:
+        """Orsaken med aktuella värden, som regeln skulle visa den nu."""
+        source = reason_source(self._type, *choice)
+        if source is None:
+            return NO_PREVIEW
+        try:
+            text = async_render(self.hass, source, await self._async_reason_variables())
+        except TemplateError as err:
+            return str(err)
+        return text or NO_PREVIEW
+
+    async def _async_reason_variables(self) -> dict[str, Any]:
+        """Variablerna som orsaken får, med aktuella värden."""
+        entities = _shown_data(self._type, self._fields)[CONF_ENTITIES]
+        values: dict[str, Any] = {}
+        if self._type == TYPE_STATUS and (shown := self.hass.states.get(entities[0])):
+            values["state_since"] = self._rule_state_since(shown.entity_id) or shown.last_changed
+        if self._type == TYPE_UPCOMING:
+            values["occurrences"] = await async_occurrences(
+                self.hass, entities, int(self._fields[CONF_COUNT])
+            )
+        return await async_variables(self.hass, entities, **values)
+
+    def _rule_state_since(self, entity: str) -> datetime | None:
+        """När regeln såg den visade entiteten få sitt tillstånd, också över en omstart.
+
+        Bara när en befintlig regel ändras och den visar samma entitet som förut.
+        """
+        if self.source != SOURCE_RECONFIGURE:
+            return None
+        subentry = self._get_reconfigure_subentry()
+        if subentry.data[CONF_ENTITIES][:1] != [entity]:
+            return None
+        entity_id = er.async_get(self.hass).async_get_entity_id(
+            "sensor", DOMAIN, subentry.subentry_id
+        )
+        rule = self.hass.states.get(entity_id) if entity_id else None
+        return parse_since(rule.attributes.get("state_since")) if rule else None
+
+    async def async_step_actions(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Åtgärderna: tjänsteanrop som kortet visar som knappar."""
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            try:
+                actions = [_action(field) for field in user_input.get(CONF_ACTIONS) or []]
+            except vol.Invalid:
+                errors[CONF_ACTIONS] = "invalid_action"
+            else:
+                return self._async_finish(actions)
+        current = user_input or self._current
+        return self.async_show_form(
+            step_id="actions",
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(
+                        CONF_ACTIONS,
+                        description={"suggested_value": current.get(CONF_ACTIONS) or None},
+                    ): _actions_selector(),
+                }
+            ),
+            errors=errors,
+        )
+
+    def _async_finish(self, actions: list[dict[str, Any]]) -> SubentryFlowResult:
+        conditions = self._conditions
         data: dict[str, Any] = {
             CONF_TYPE: self._type,
             **_shown_data(self._type, self._fields),
@@ -380,6 +602,13 @@ class RuleSubentryFlow(ConfigSubentryFlow):
             data[CONF_ICON] = icon
         if hide := conditions.get(CONF_HIDE):
             data[CONF_HIDE] = hide
+        reason, template = self._reason
+        if reason != REASON_NONE:
+            data[CONF_REASON] = reason
+        if template is not None:
+            data[CONF_REASON_TEMPLATE] = template
+        if actions:
+            data[CONF_ACTIONS] = actions
         title = self._fields[CONF_NAME].strip()
         if self.source == SOURCE_RECONFIGURE:
             subentry = self._get_reconfigure_subentry()
