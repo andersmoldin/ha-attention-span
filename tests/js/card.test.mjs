@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { fakeHass, notice, renderCard, text, value } from "./fake-hass.mjs";
+import { fakeHass, notice, renderCard, status, text, value } from "./fake-hass.mjs";
 
 const BILEN = value("sensor.bilen_batteri", "52", "%");
 const ELPRIS = value("sensor.elpris", "42", "öre/kWh");
@@ -176,8 +176,133 @@ test("kortet ritas om när det som visas ändras, inte när andra entiteter änd
 
 test("notiser av en Typ som kortet ännu inte kan rita ritas inte som Värde", () => {
   const root = renderCard(
-    fakeHass({ notices: [notice("value_glance", { attributes: { type: "status" } })], values: [BILEN] }),
+    fakeHass({ notices: [notice("value_glance", { attributes: { type: "progress" } })], values: [BILEN] }),
   );
 
   assert.equal(root.querySelectorAll(".glance, .quiet").length, 0);
+});
+
+const FINDUS = status("vacuum.findus", "Ej tillgänglig", 3 * 60);
+const DORREN = status("binary_sensor.ytterdorr", "Öppen", 10);
+const TVATTEN = status("sensor.tvattmaskin", "Kör", 25);
+
+test("Larm, Problem och Pågår ritas som egna kort i den ordningen, över Blick", () => {
+  const root = renderCard(
+    fakeHass({
+      notices: [
+        notice("value_glance"),
+        notice("status_ongoing"),
+        notice("status_problem"),
+        notice("status_alarm"),
+      ],
+      values: [BILEN, FINDUS, DORREN, TVATTEN],
+    }),
+  );
+
+  const parts = [...root.querySelectorAll(".notice, .glance")];
+  assert.deepEqual(
+    parts.map((el) => [el.className, text(el)]),
+    [
+      ["notice alarm", "Findus Ej tillgänglig i 3 tim"],
+      ["notice problem", "Ytterdörren Öppen i 10 min"],
+      ["notice ongoing", "Tvätten Kör i 25 min"],
+      ["glance", "52 % Bilen"],
+    ],
+  );
+  assert.ok(parts.slice(0, 3).every((el) => el.tagName === "HA-CARD"));
+  assert.equal(parts[0].querySelector("ha-icon").getAttribute("icon"), "mdi:robot-vacuum");
+});
+
+test("varje notis på Pågår får ett eget kort", () => {
+  const dorren = notice("status_problem", { state: "ongoing" });
+  const root = renderCard(
+    fakeHass({ notices: [notice("status_ongoing"), dorren], values: [DORREN, TVATTEN] }),
+  );
+
+  assert.deepEqual([...root.querySelectorAll(".notice.ongoing")].map(text), [
+    "Ytterdörren Öppen i 10 min",
+    "Tvätten Kör i 25 min",
+  ]);
+});
+
+test("Larm ritas stort och rött ur temat", () => {
+  const root = renderCard(
+    fakeHass({
+      notices: [
+        notice("status_alarm"),
+        notice("status_problem"),
+        notice("status_ongoing", { state: "glance" }),
+      ],
+      values: [FINDUS, DORREN, TVATTEN],
+    }),
+  );
+  root.host.style.setProperty("--error-color", "rgb(219, 68, 55)");
+
+  const [alarm, problem, glance] = [".notice.alarm b", ".notice.problem b", ".glance b"].map(
+    (selector) => window.getComputedStyle(root.querySelector(selector)),
+  );
+  assert.equal(alarm.color, "rgb(219, 68, 55)");
+  for (const other of [problem, glance]) {
+    assert.ok(parseFloat(alarm.fontSize) > parseFloat(other.fontSize));
+  }
+});
+
+test("en Status-notis på Blick visar namnet först, sedan tillståndet och hur länge", () => {
+  const root = renderCard(
+    fakeHass({ notices: [notice("status_problem", { state: "glance" })], values: [DORREN] }),
+  );
+
+  assert.equal(text(root.querySelector(".glance")), "Ytterdörren Öppen i 10 min");
+});
+
+test("hur länge räknas i minuter, timmar eller dagar", () => {
+  for (const [minutes, shown] of [
+    [0, "0 min"],
+    [59, "59 min"],
+    [60, "1 tim"],
+    [47 * 60, "47 tim"],
+    [48 * 60, "2 d"],
+  ]) {
+    const root = renderCard(
+      fakeHass({
+        notices: [notice("status_problem")],
+        values: [status("binary_sensor.ytterdorr", "Öppen", minutes)],
+      }),
+    );
+
+    assert.equal(text(root.querySelector(".notice")), `Ytterdörren Öppen i ${shown}`);
+  }
+});
+
+test("Status följer användarens språk", () => {
+  const root = renderCard(
+    fakeHass({
+      notices: [notice("status_problem")],
+      values: [status("binary_sensor.ytterdorr", "Open", 10)],
+      language: "en",
+    }),
+  );
+
+  assert.equal(text(root.querySelector(".notice")), "Ytterdörren Open for 10 min");
+});
+
+test("en notis av typen Värde på Problem visar namnet och värdet", () => {
+  const root = renderCard(
+    fakeHass({ notices: [notice("value_glance", { state: "problem" })], values: [BILEN] }),
+  );
+
+  assert.equal(text(root.querySelector(".notice.problem")), "Bilen 52 %");
+});
+
+test("hur länge räknas upp medan kortet visas, utan att något annat ändras", (t) => {
+  // Ta bort förra testets kort med den riktiga klockan; en låtsad clearInterval stoppar inte
+  // dess timer, och då avslutas inte testerna.
+  document.body.replaceChildren();
+  t.mock.timers.enable({ apis: ["Date", "setInterval"], now: Date.parse("2026-10-26T08:00:00Z") });
+  const root = renderCard(fakeHass({ notices: [notice("status_problem")], values: [status("binary_sensor.ytterdorr", "Öppen", 10)] }));
+  assert.equal(text(root.querySelector(".notice")), "Ytterdörren Öppen i 10 min");
+
+  t.mock.timers.tick(60_000);
+
+  assert.equal(text(root.querySelector(".notice")), "Ytterdörren Öppen i 11 min");
 });

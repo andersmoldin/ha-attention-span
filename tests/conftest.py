@@ -7,7 +7,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResult, FlowResultType
 
-from custom_components.attention_span.const import DOMAIN, SUBENTRY_RULE
+from custom_components.attention_span.const import DOMAIN, LEVELS, SUBENTRY_RULE
 
 FIXTURES = pathlib.Path(__file__).parent / "fixtures"
 
@@ -15,8 +15,10 @@ FIXTURES = pathlib.Path(__file__).parent / "fixtures"
 FIXTURE_TIME = "2026-10-26T08:00:00+00:00"
 
 # Formulärfälten för reglerna bakom fixturernas exempel.
-BILEN = {"name": "Bilen", "icon": "mdi:car", "entity": "sensor.bilen_batteri", "level": "glance"}
-ELPRIS = {"name": "Elpris", "icon": "mdi:flash", "entity": "sensor.elpris", "level": "quiet"}
+BILEN = {"name": "Bilen", "icon": "mdi:car", "entity": "sensor.bilen_batteri"}
+ELPRIS = {"name": "Elpris", "icon": "mdi:flash", "entity": "sensor.elpris"}
+ALWAYS_GLANCE = {"glance": "always"}
+ALWAYS_QUIET = {"quiet": "always"}
 
 
 def contract_example(name: str) -> dict:
@@ -59,11 +61,35 @@ async def start_rule_reconfigure(
     )
 
 
-async def add_rule(hass: HomeAssistant, entry: ConfigEntry, rule_type: str, fields: dict) -> str:
-    """Lägg till en Rule via subentry-flödet och returnera subentryns id."""
+def level_modes(levels: dict[str, str]) -> dict[str, str]:
+    """Formulärets val för alla nivåer; en utelämnad nivå är Inget."""
+    return {level: levels.get(level, "none") for level in LEVELS}
+
+
+async def add_rule(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    rule_type: str,
+    fields: dict,
+    levels: dict[str, str],
+    conditions: dict[str, list] | None = None,
+) -> str:
+    """Lägg till en Rule via subentry-flödet och returnera subentryns id.
+
+    levels är Inget, Alltid eller Villkor per nivå (utelämnad nivå är Inget) och
+    conditions villkoren för nivåerna med Villkor och för Dölj när.
+    """
     before = set(entry.subentries)
     result = await start_rule(hass, entry, rule_type)
     result = await hass.config_entries.subentries.async_configure(result["flow_id"], fields)
+    assert result["step_id"] == "levels"
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], level_modes(levels)
+    )
+    assert result["step_id"] == "conditions"
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], conditions or {}
+    )
     assert result["type"] is FlowResultType.CREATE_ENTRY
     await hass.async_block_till_done()
     (added,) = set(entry.subentries) - before
@@ -71,10 +97,24 @@ async def add_rule(hass: HomeAssistant, entry: ConfigEntry, rule_type: str, fiel
 
 
 async def reconfigure_rule(
-    hass: HomeAssistant, entry: ConfigEntry, subentry_id: str, fields: dict
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    subentry_id: str,
+    fields: dict,
+    levels: dict[str, str],
+    conditions: dict[str, list] | None = None,
 ) -> None:
+    """Ändra en Rule; levels och conditions som i add_rule."""
     result = await start_rule_reconfigure(hass, entry, subentry_id)
     result = await hass.config_entries.subentries.async_configure(result["flow_id"], fields)
+    assert result["step_id"] == "levels"
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], level_modes(levels)
+    )
+    assert result["step_id"] == "conditions"
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], conditions or {}
+    )
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "reconfigure_successful"
     await hass.async_block_till_done()

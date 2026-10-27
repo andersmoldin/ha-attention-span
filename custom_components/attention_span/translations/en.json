@@ -25,18 +25,28 @@
             "type": "Type"
           }
         },
+        "status": {
+          "title": "Status",
+          "description": "A state and how long it has held, for example the front door being open.",
+          "data": {
+            "name": "Name",
+            "icon": "Icon",
+            "entity": "Entity"
+          },
+          "data_description": {
+            "entity": "The entity whose state the notice shows."
+          }
+        },
         "value": {
           "title": "Value",
           "description": "A number with a unit, for example the car's charge.",
           "data": {
             "name": "Name",
             "icon": "Icon",
-            "entity": "Entity",
-            "level": "Always shown as"
+            "entity": "Entity"
           },
           "data_description": {
-            "entity": "A numeric sensor.",
-            "level": "The level the rule always has."
+            "entity": "A numeric sensor."
           }
         },
         "reconfigure": {
@@ -44,17 +54,44 @@
           "data": {
             "name": "Name",
             "icon": "Icon",
-            "entity": "Entity",
-            "level": "Always shown as"
+            "entity": "Entity"
           },
           "data_description": {
-            "entity": "A numeric sensor.",
-            "level": "The level the rule always has."
+            "entity": "The entity the notice shows."
+          }
+        },
+        "levels": {
+          "title": "Levels",
+          "description": "For each level, choose whether it never applies, always applies or applies when a condition holds. The most severe level that applies wins, whatever the order.",
+          "data": {
+            "alarm": "Alarm",
+            "problem": "Problem",
+            "ongoing": "Ongoing",
+            "glance": "Glance",
+            "quiet": "Quiet"
+          }
+        },
+        "conditions": {
+          "title": "Conditions",
+          "description": "Set the conditions for the levels with Condition. Several conditions for the same level must all hold; use «Or» if one is enough.",
+          "data": {
+            "alarm": "Alarm",
+            "problem": "Problem",
+            "ongoing": "Ongoing",
+            "glance": "Glance",
+            "quiet": "Quiet",
+            "hide": "Hide when"
+          },
+          "data_description": {
+            "hide": "The rule is hidden while this condition holds, whatever its level conditions."
           }
         }
       },
       "error": {
-        "name_required": "Enter a name."
+        "name_required": "Enter a name.",
+        "level_required": "Choose Always or Condition for at least one level.",
+        "condition_required": "Add a condition, or choose None or Always for the level.",
+        "invalid_condition": "The condition is not valid."
       },
       "abort": {
         "reconfigure_successful": "The rule has been updated."
@@ -64,13 +101,15 @@
   "selector": {
     "type": {
       "options": {
+        "status": "Status",
         "value": "Value"
       }
     },
-    "level": {
+    "level_mode": {
       "options": {
-        "glance": "Glance",
-        "quiet": "Quiet"
+        "none": "None",
+        "always": "Always",
+        "condition": "Condition"
       }
     }
   },

@@ -32,5 +32,56 @@
       "icon": "mdi:flash",
       "friendly_name": "Elpris"
     }
+  },
+  "status_alarm": {
+    "entity_id": "sensor.attention_span_findus",
+    "state": "alarm",
+    "attributes": {
+      "options": ["alarm", "problem", "ongoing", "glance", "quiet", "hidden"],
+      "contract": 1,
+      "source": "rule",
+      "type": "status",
+      "priority": 1,
+      "reason": null,
+      "entities": ["vacuum.findus"],
+      "since": "2026-10-26T08:00:00+00:00",
+      "device_class": "enum",
+      "icon": "mdi:robot-vacuum",
+      "friendly_name": "Findus"
+    }
+  },
+  "status_problem": {
+    "entity_id": "sensor.attention_span_ytterdorren",
+    "state": "problem",
+    "attributes": {
+      "options": ["alarm", "problem", "ongoing", "glance", "quiet", "hidden"],
+      "contract": 1,
+      "source": "rule",
+      "type": "status",
+      "priority": 2,
+      "reason": null,
+      "entities": ["binary_sensor.ytterdorr"],
+      "since": "2026-10-26T08:00:00+00:00",
+      "device_class": "enum",
+      "icon": "mdi:door",
+      "friendly_name": "Ytterdörren"
+    }
+  },
+  "status_ongoing": {
+    "entity_id": "sensor.attention_span_tvatten",
+    "state": "ongoing",
+    "attributes": {
+      "options": ["alarm", "problem", "ongoing", "glance", "quiet", "hidden"],
+      "contract": 1,
+      "source": "rule",
+      "type": "status",
+      "priority": 3,
+      "reason": null,
+      "entities": ["sensor.tvattmaskin"],
+      "since": "2026-10-26T08:00:00+00:00",
+      "device_class": "enum",
+      "icon": "mdi:washing-machine",
+      "friendly_name": "Tvätten"
+    }
   }
 }

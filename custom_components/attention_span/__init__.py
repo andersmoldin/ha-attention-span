@@ -5,7 +5,9 @@ from __future__ import annotations
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryError
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers.condition import ConditionChecker
 from homeassistant.helpers.typing import ConfigType
 
 from .const import DOMAIN
@@ -23,6 +25,9 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    # Reglerna räknas om när villkoren ändras, med API:t som kom i HA 2026.10.
+    if not hasattr(ConditionChecker, "async_track_changes"):
+        raise ConfigEntryError("AttentionSpan kräver Home Assistant 2026.10.0 eller senare.")
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(_async_reload))
     return True
