@@ -283,3 +283,17 @@ test("en notis som läggs åt sidan och tas fram igen uppdateras på plats, utan
   assert.equal(still, ongoing, "en annan notis byggdes om");
   assert.equal(icons.loaded, loaded, "en ikon laddades igen");
 });
+
+test("valen följer en ändrad konfiguration och ett ändrat språk, också på en notis som redan visas", (t) => {
+  const root = renderAt(t, fakeHass({ notices: [held("status_problem", 10)], values: [DORREN] }));
+  const el = root.querySelector(".notice.problem");
+
+  root.host.setConfig({ type: "custom:attention-span-card", snooze_options: [{ name: "Lunch", at: "12:30" }] });
+  press(el, "Lägg åt sidan");
+  assert.equal(root.querySelector(".notice.problem"), el);
+  assert.deepEqual(buttons(el), ["Lägg åt sidan", "Lunch"]);
+
+  root.host.setConfig({ type: "custom:attention-span-card" });
+  root.host.hass = fakeHass({ notices: [held("status_problem", 10)], values: [DORREN], language: "en" });
+  assert.deepEqual(buttons(el), ["Snooze", "1 hour", "Tonight 21:00", "Tomorrow morning", "Until fixed"]);
+});

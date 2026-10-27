@@ -85,17 +85,15 @@ class _Hold:
         hass: HomeAssistant,
         rule: Mapping[str, Any],
         on_change: Callable[[], None],
-        held: tuple[str, datetime | None, datetime | None] | None,
     ) -> None:
-        """held är nivån, until och när regeln kom under nivån, när läget gäller."""
         self._hass = hass
         self._flap = _flap_limit(rule)
         self._on_change = on_change
+        # Nivån läget gäller på, eller None när det inte gäller; när det går ut; och när regeln
+        # kom under nivån, eller None medan den har nivån. Subklasserna läser in ett sparat läge.
         self._level: str | None = None
         self._until: datetime | None = None
         self._released: datetime | None = None
-        if held is not None:
-            self._level, self._until, self._released = held
         self._unsub_timer: CALLBACK_TYPE | None = None
         # När timern går, så att den inte byggs om vid varje omräkning.
         self._timer_at: datetime | None = None
@@ -186,12 +184,11 @@ class Acknowledgement(_Hold):
         saved: SavedAcknowledgement | None,
         on_change: Callable[[], None],
     ) -> None:
-        super().__init__(
-            hass,
-            rule,
-            on_change,
-            (ALARM, _parse(saved["realarm_at"]), _parse(saved["released"])) if saved else None,
-        )
+        super().__init__(hass, rule, on_change)
+        if saved is not None:
+            self._level = ALARM
+            self._until = _parse(saved["realarm_at"])
+            self._released = _parse(saved["released"])
         self._realarm = _realarm_after(rule)
 
     @property
@@ -228,12 +225,11 @@ class Snooze(_Hold):
         saved: SavedSnooze | None,
         on_change: Callable[[], None],
     ) -> None:
-        super().__init__(
-            hass,
-            rule,
-            on_change,
-            (saved["level"], _parse(saved["until"]), _parse(saved["released"])) if saved else None,
-        )
+        super().__init__(hass, rule, on_change)
+        if saved is not None:
+            self._level = saved["level"]
+            self._until = _parse(saved["until"])
+            self._released = _parse(saved["released"])
 
     @property
     def saved(self) -> SavedSnooze | None:

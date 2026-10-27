@@ -197,16 +197,17 @@ function button(onClick) {
 // (hass-action), så att HA:s egen dialog frågar med bekräftelsetexten först när den finns.
 // Ett Larm som går att kvittera har knappen Kvittera först, som anropar host.acknowledge med
 // notisens entitet. Ett Problem eller en Pågår-notis har i stället Lägg åt sidan, som fäller
-// ut valen för åt sidan under knapparna; ett val anropar host.snooze med entiteten och valets
-// plats bland valen. Knapparna byggs bara om när åtgärderna eller valen ändras, och Kvittera,
-// Lägg åt sidan och valen visas och döljs på plats. Utan knappar är raden tom och dold.
+// ut valen för åt sidan (host.choices) under knapparna; ett val anropar host.snooze med
+// entiteten och valets plats bland valen. Knapparna byggs bara om när åtgärderna eller valen
+// ändras, och Kvittera, Lägg åt sidan och valen visas och döljs på plats. Utan knappar är raden
+// tom och dold.
 function actionsPart(host) {
   const el = document.createElement("div");
   el.className = "actions";
-  let entity = null;
+  // Notisen som raden senast ritades för, och om valen för åt sidan är utfällda.
+  let row = null;
   let open = false;
-  let place = () => {};
-  const acknowledgeButton = button(() => host.acknowledge(entity));
+  const acknowledgeButton = button(() => host.acknowledge(row.id));
   const snoozeButton = button(() => {
     open = !open;
     place();
@@ -216,8 +217,18 @@ function actionsPart(host) {
   let drawn = null;
   let buttons = [];
   let choices = [];
-  const update = (row, text, choiceNames) => {
-    entity = row.id;
+  const place = () => {
+    placeChildren(choicesEl, open ? choices : []);
+    placeChildren(el, [
+      ...(row.acknowledgeable ? [acknowledgeButton] : []),
+      ...(row.snoozable ? [snoozeButton] : []),
+      ...buttons,
+      ...(open ? [choicesEl] : []),
+    ]);
+  };
+  const update = (newRow, text) => {
+    row = newRow;
+    const choiceNames = host.choices();
     const key = JSON.stringify([row.id, row.actions, choiceNames]);
     if (key !== drawn) {
       drawn = key;
@@ -226,7 +237,7 @@ function actionsPart(host) {
         const choice = button(() => {
           open = false;
           place();
-          host.snooze(entity, i);
+          host.snooze(row.id, i);
         });
         choice.textContent = name;
         return choice;
@@ -235,24 +246,12 @@ function actionsPart(host) {
     setText(acknowledgeButton, text.acknowledge);
     setText(snoozeButton, text.snooze);
     open &&= row.snoozable;
-    place = () => {
-      placeChildren(choicesEl, open ? choices : []);
-      placeChildren(el, [
-        ...(row.acknowledgeable ? [acknowledgeButton] : []),
-        ...(row.snoozable ? [snoozeButton] : []),
-        ...buttons,
-        ...(open ? [choicesEl] : []),
-      ]);
-    };
     place();
   };
   return { el, update };
 }
 
 function actionButton(entityId, action) {
-  const el = document.createElement("button");
-  el.type = "button";
-  el.textContent = action.name;
   const tapAction = {
     action: "perform-action",
     perform_action: action.action,
@@ -260,7 +259,7 @@ function actionButton(entityId, action) {
     data: action.data,
   };
   if (action.confirmation) tapAction.confirmation = { text: action.confirmation };
-  el.addEventListener("click", () => {
+  const el = button(() => {
     el.dispatchEvent(
       new CustomEvent("hass-action", {
         detail: { config: { entity: entityId, tap_action: tapAction }, action: "tap" },
@@ -269,6 +268,7 @@ function actionButton(entityId, action) {
       }),
     );
   });
+  el.textContent = action.name;
   return el;
 }
 
@@ -308,12 +308,12 @@ function noticeElement(level, host) {
   const texts = textParts(body);
   return {
     el,
-    update: (row, text, choices) => {
+    update: (row, text) => {
       el.classList.toggle("acknowledged", row.acknowledged);
       setIcon(icon, row.icon);
       texts(row.name, row.text, row.fraction);
       moreInfo(row.moreInfo);
-      actions.update(row, text, choices);
+      actions.update(row, text);
     },
   };
 }
@@ -329,12 +329,12 @@ function rowElement(level, host) {
   const texts = textParts(head);
   return {
     el,
-    update: (row, text, choices) => {
+    update: (row, text) => {
       setIcon(icon, row.icon);
       const [first, second] = row.valueFirst ? [row.text, row.name] : [row.name, row.text];
       texts(first, second, row.fraction);
       moreInfo(row.moreInfo);
-      actions.update(row, text, choices);
+      actions.update(row, text);
     },
   };
 }
@@ -366,14 +366,14 @@ function customNoticeElement(level, host) {
   const embedded = embeddedPart(el, actions.el);
   return {
     el,
-    update: (row, text, choices) => {
+    update: (row, text) => {
       el.classList.toggle("acknowledged", row.acknowledged);
       setIcon(icon, row.icon);
       setText(name, row.name);
       setText(reason, row.text);
       embedded(host.embedded(row));
       moreInfo(row.moreInfo);
-      actions.update(row, text, choices);
+      actions.update(row, text);
     },
   };
 }
@@ -387,9 +387,9 @@ function customRowElement(level, host) {
   const embedded = embeddedPart(el, actions.el);
   return {
     el,
-    update: (row, text, choices) => {
+    update: (row, text) => {
       embedded(host.embedded(row));
-      actions.update(row, text, choices);
+      actions.update(row, text);
     },
   };
 }
@@ -470,7 +470,7 @@ const MORE = {
 
 // Hur en notis byggs: som eget kort (notice) eller som rad (row), med ett inbäddat kort för
 // Eget kort och annars med text. Varje sätt får nivån och host: AttentionSpan-kortets
-// embedded, acknowledge och snooze.
+// embedded, acknowledge, choices (valens namn för åt sidan), snooze och unsnooze.
 const ELEMENTS = {
   notice: { custom: customNoticeElement, text: noticeElement },
   row: { custom: customRowElement, text: rowElement },
@@ -538,6 +538,8 @@ class AttentionSpanCard extends HTMLElement {
       );
     }
     const model = cardModel(this._hass, Date.now(), this._snoozeOptions);
+    // Valens namn för åt sidan, som notiserna läser genom host när de ritas.
+    this._choices = model.choices;
     const text = strings(this._hass);
     // De inbäddade korten visar egna entiteter och behöver varje ny hass.
     for (const { el } of this._cards.values()) el.hass = this._hass;
@@ -552,6 +554,7 @@ class AttentionSpanCard extends HTMLElement {
     const host = {
       embedded: (r) => this._embedded(r),
       acknowledge: (entityId) => this._acknowledge(entityId),
+      choices: () => this._choices,
       snooze: (entityId, choice) => this._snooze(entityId, choice),
       unsnooze: (entityId) => this._unsnooze(entityId),
     };
@@ -561,7 +564,7 @@ class AttentionSpanCard extends HTMLElement {
       const notice =
         this._drawnNotices.get(key) ??
         ELEMENTS[shape][row.type === "custom" ? "custom" : "text"](level, host);
-      notice.update(row, text, model.choices);
+      notice.update(row, text);
       drawnNotices.set(key, notice);
       return notice.el;
     };

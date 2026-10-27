@@ -284,7 +284,7 @@ function nextDate(isoDate) {
 
 // En tidpunkt med så lite text som behövs: klockslaget i dag, annars i morgon, i går,
 // veckodagen under den närmaste veckan eller datumet före klockslaget.
-function clock(hass, iso, now) {
+function dayAndTime(hass, iso, now) {
   const at = Date.parse(iso ?? "");
   if (!Number.isFinite(at)) return "–";
   const lang = language(hass);
@@ -403,7 +403,7 @@ export function snoozeData(hass, option, now) {
 function snoozedRow(hass, stateObj, now) {
   const a = stateObj.attributes;
   const text = strings(hass);
-  const since = clock(hass, a.since, now);
+  const since = dayAndTime(hass, a.since, now);
   return {
     id: stateObj.entity_id,
     level: stateObj.state,
@@ -411,7 +411,7 @@ function snoozedRow(hass, stateObj, now) {
     name: a.friendly_name ?? stateObj.entity_id,
     icon: a.icon ?? null,
     text: a.snoozed_until
-      ? text.snoozedUntil(clock(hass, a.snoozed_until, now), since)
+      ? text.snoozedUntil(dayAndTime(hass, a.snoozed_until, now), since)
       : text.snoozedUntilFixed(since),
     moreInfo: a.entities?.[0] ?? stateObj.entity_id,
   };
