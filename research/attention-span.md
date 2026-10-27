@@ -40,7 +40,7 @@ En regel konfigureras i gränssnittet (en config subentry per regel). Dialogen h
 3. **Entiteter** som typen visar.
 4. **Nivåvillkor:** en rad per nivå med högst ett villkor, som anges med Home Assistants villkorsväljare. Behövs flera villkor för samma nivå kombineras de med HA:s *Eller*. «Alltid» är ett eget val, eftersom HA saknar ett villkor som alltid är sant.
 5. **Dölj när:** ett valfritt villkor som gör regeln dold oavsett nivåvillkor.
-6. **Ordning:** en lista med de regler som kan hamna på samma nivå, där regeln flyttas upp eller ner med pilar. Ett prioritetstal sparas i bakgrunden.
+6. **Placering:** ett val med «Först» och «Efter <regel>» för varje annan regel som delar minst en nivå med den här. Valet hoppas över när ingen sådan regel finns. Ett prioritetstal (`priority`) beräknas och sparas i bakgrunden, och de andra reglerna numreras om vid behov. När bara prioritetstalen har ändrats får sensorerna dem direkt, utan att integrationen laddas om.
 7. **Orsak:** en färdig mall för typen (t.ex. «Öppen i {tid}», «{tid} kvar») eller en egen template, med förhandsvisning. Orsak gäller hela regeln; det som skiljer mellan nivåer löses i mallen.
 8. **Åtgärder** (valfritt): tjänsteanrop som kortet visar som knappar, t.ex. «Starta om». Gäller hela regeln och alla typer.
 9. **Larma igen efter kvittering:** visas bara om regeln kan bli Larm. Standard 24 h; tomt betyder aldrig.
