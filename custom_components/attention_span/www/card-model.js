@@ -68,37 +68,51 @@ function hms(text) {
   return ((h * 60 + m) * 60 + s) * 1000;
 }
 
+// Millisekunder per enhet för en sensor med tid kvar (device_class duration).
+const DURATION_UNITS = { ms: 1, s: 1000, min: 60_000, h: 3_600_000, d: 86_400_000 };
+
 // När Förloppet började och slutar, i millisekunder, eller null när det inte går att veta.
-// En timer har sin längd och sluttid. En sluttid i en sensor räknas från när den sattes.
-function span(shown, now) {
+// En timer har sin längd och sluttid. En sensor har bara sluttiden eller tiden kvar, så
+// Förloppet räknas från när notisen fick sin nivå. Sensorns egen ändringstid duger inte:
+// många apparater justerar sluttiden under tiden, och då skulle stapeln börja om.
+function span(shown, since, now) {
   const a = shown.attributes;
   if (shown.entity_id.startsWith("timer.")) {
     const total = hms(a.duration);
     const end = shown.state === "active" ? Date.parse(a.finishes_at) : now + hms(a.remaining);
     return shown.state === "idle" ? null : { start: end - total, end };
   }
-  if (a.device_class === "timestamp") {
-    return { start: Date.parse(shown.last_changed), end: Date.parse(shown.state) };
+  if (a.device_class === "timestamp") return { start: since, end: Date.parse(shown.state) };
+  if (a.device_class === "duration") {
+    const left = Number.parseFloat(shown.state) * DURATION_UNITS[a.unit_of_measurement];
+    return { start: since, end: now + left };
   }
   return null;
 }
 
 // Typen Förlopp: tid kvar eller procent, och hur långt det har kommit (0–1) för stapeln.
-function progress(hass, shown, now) {
+// since är när notisen fick sin nivå.
+function progress(hass, shown, since, now) {
   const state = hass.formatEntityState(shown);
   if (shown.attributes.unit_of_measurement === "%") {
     const percent = Number.parseFloat(shown.state);
-    return { text: state, done: Number.isFinite(percent) ? clamp(percent / 100) : null };
+    return { text: state, fraction: Number.isFinite(percent) ? clamp(percent / 100) : null };
   }
-  const { start, end } = span(shown, now) ?? {};
-  if (!Number.isFinite(start) || !Number.isFinite(end)) return { text: state, done: null };
+  const { start, end } = span(shown, since, now) ?? {};
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return { text: state };
   const left = duration(end - now, language(hass), Math.ceil);
-  return { text: strings(hass).left(left), done: end > start ? clamp((now - start) / (end - start)) : 1 };
+  const fraction = end > start ? clamp((now - start) / (end - start)) : 1;
+  return { text: strings(hass).left(left), fraction };
 }
 
 // Tidszonen som användaren har valt i sin profil i HA: serverns eller enhetens.
 function timeZone(hass) {
   return hass.locale?.time_zone === "server" ? hass.config?.time_zone : undefined;
+}
+
+// Datumet, «2026-10-29», för en tidpunkt i millisekunder i tidszonen zone.
+function localDate(ms, zone) {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: zone }).format(ms);
 }
 
 // Ett datum, «2026-10-29», som dagar sedan 1970, för att räkna hela dagar mellan datum.
@@ -122,9 +136,8 @@ function when(hass, occurrence, now) {
   if (!allDay && start - now < 60 * 60_000) {
     return text.soon(duration(start - now, lang, Math.ceil));
   }
-  const today = new Intl.DateTimeFormat("en-CA", { timeZone: zone }).format(now);
-  const day = allDay ? occurrence.start : new Intl.DateTimeFormat("en-CA", { timeZone: zone }).format(start);
-  const days = dayNumber(day) - dayNumber(today);
+  const day = allDay ? occurrence.start : localDate(start, zone);
+  const days = dayNumber(day) - dayNumber(localDate(now, zone));
   const date =
     days <= 0
       ? text.today
@@ -141,50 +154,52 @@ function upcoming(hass, occurrences, now) {
   const shown = (occurrences ?? []).map((occurrence) =>
     [when(hass, occurrence, now), occurrence.summary].filter(Boolean).join(" "),
   );
-  return { text: shown.join(" · ") || "–", done: null };
+  return { text: shown.join(" · ") || "–" };
 }
 
-// Medlemmarna om entiteten är en grupp: i domänen group eller en grupphjälpare (plattformen
-// group). Andra entiteter kan också ha listan entity_id, till exempel scener.
+// Medlemmarna om entiteten är en grupp, som HA:s detaljdialog ser dem: group_entities, som
+// alla slags grupper kan ha, och annars entity_id i domänen group eller för en grupphjälpare
+// (plattformen group). Andra entiteter kan också ha listan entity_id, till exempel scener.
 function members(hass, shown) {
+  const a = shown.attributes;
+  if (Array.isArray(a.group_entities)) return a.group_entities;
   const group =
     shown.entity_id.startsWith("group.") || hass.entities?.[shown.entity_id]?.platform === "group";
-  const ids = shown.attributes.entity_id;
-  return group && Array.isArray(ids) ? ids : null;
+  return group && Array.isArray(a.entity_id) ? a.entity_id : null;
 }
 
-// Det notisens Typ visar: en text och, för Förlopp, hur långt det har kommit. moreInfo är
-// entiteten som ett tryck visar i HA:s detaljdialog.
+// Det notisens Typ visar: en text och, för Förlopp, hur långt det har kommit (fraction, 0–1).
+// moreInfo är entiteten som ett tryck visar i HA:s detaljdialog.
 function content(hass, attributes, now) {
   if (attributes.type === "upcoming") return upcoming(hass, attributes.occurrences, now);
   // Eget kort visar sin kortkonfiguration i stället för en text.
-  if (attributes.type === "custom") return { text: "", done: null };
+  if (attributes.type === "custom") return { text: "" };
   const type = attributes.type;
   const shown = hass.states[attributes.entities?.[0]];
-  if (!shown) return { text: "–", done: null };
-  if (type === "progress") return progress(hass, shown, now);
+  if (!shown) return { text: "–" };
+  if (type === "progress") return progress(hass, shown, Date.parse(attributes.since), now);
   const state = hass.formatEntityState(shown);
-  if (type !== "status") return { text: state, done: null };
+  if (type !== "status") return { text: state };
   const group = members(hass, shown);
   if (group) {
     const count = group.filter((id) => hass.states[id]?.state === shown.state).length;
     const text = strings(hass).group(state, count, group.length);
-    return { text, done: null, moreInfo: shown.entity_id };
+    return { text, moreInfo: shown.entity_id };
   }
   const since = duration(now - Date.parse(shown.last_changed), language(hass));
-  return { text: strings(hass).status(state, since), done: null };
+  return { text: strings(hass).status(state, since) };
 }
 
 function row(hass, stateObj, now) {
   const a = stateObj.attributes;
-  const { text, done, moreInfo = null } = content(hass, a, now);
+  const { text, fraction = null, moreInfo = null } = content(hass, a, now);
   return {
     id: stateObj.entity_id,
     name: a.friendly_name ?? stateObj.entity_id,
     icon: a.icon ?? null,
     type: a.type,
     text,
-    done,
+    fraction,
     card: a.type === "custom" ? a.card : null,
     moreInfo,
   };

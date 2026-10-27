@@ -50,6 +50,7 @@ async def test_a_progress_rule_becomes_a_sensor_in_contract_v1(hass: HomeAssista
     [
         ("sensor.diskmaskin_klar", "2026-10-26T08:40:00+00:00", {"device_class": "timestamp"}),
         ("sensor.skrivare_klar", "62", {"unit_of_measurement": "%"}),
+        ("sensor.disk_kvar", "40", {"device_class": "duration", "unit_of_measurement": "min"}),
         ("timer.agg", "active", {"duration": "0:08:00", "remaining": "0:08:00"}),
     ],
 )

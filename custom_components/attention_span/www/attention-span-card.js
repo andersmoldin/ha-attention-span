@@ -86,11 +86,11 @@ function textElement(tag, text) {
 
 // Stapeln för Förlopp, eller inget när notisen inte har någon.
 function barElements(row) {
-  if (row.done === null) return [];
+  if (row.fraction === null) return [];
   const el = document.createElement("div");
   el.className = "bar";
   const fill = document.createElement("i");
-  fill.style.width = `${row.done * 100}%`;
+  fill.style.width = `${row.fraction * 100}%`;
   el.append(fill);
   return [el];
 }
@@ -204,57 +204,57 @@ class AttentionSpanCard extends HTMLElement {
     const drawn = JSON.stringify([model, calmText]);
     if (drawn === this._drawn) return;
     this._drawn = drawn;
-    const shown = Object.values(model).flatMap((rows) => (Array.isArray(rows) ? rows : []));
-    this._keepCards(shown);
-    const row = (row, level) =>
+    const levels = [...NEEDS_ATTENTION, "glance", "quiet"];
+    this._keepCards(levels.flatMap((level) => model[level]));
+    const drawRow = (row, level) =>
       row.type === "custom" ? customRowElement(level, this._embedded(row)) : rowElement(row, level);
-    const notice = (row, level) =>
+    const drawNotice = (row, level) =>
       row.type === "custom"
         ? customNoticeElement(row, level, this._embedded(row))
         : noticeElement(row, level);
     const rows = [
       ...(model.calm ? [calmElement(calmText)] : []),
-      ...model.glance.map((r) => row(r, "glance")),
-      ...model.quiet.map((r) => row(r, "quiet")),
+      ...model.glance.map((row) => drawRow(row, "glance")),
+      ...model.quiet.map((row) => drawRow(row, "quiet")),
     ];
     const rowsCard = document.createElement("ha-card");
     rowsCard.append(...rows);
     this.shadowRoot
       .querySelector(".stack")
       .replaceChildren(
-        ...NEEDS_ATTENTION.flatMap((level) => model[level].map((r) => notice(r, level))),
+        ...NEEDS_ATTENTION.flatMap((level) => model[level].map((row) => drawNotice(row, level))),
         ...(rows.length ? [rowsCard] : []),
       );
   }
+
+  // Glöm de inbäddade korten för notiser som inte visas längre, och ladda HA:s verktyg för
+  // att skapa kort första gången ett Eget kort ska visas.
+  _keepCards(rows) {
+    const ids = new Set(rows.filter((row) => row.type === "custom").map((row) => row.id));
+    for (const id of this._cards.keys()) if (!ids.has(id)) this._cards.delete(id);
+    if (ids.size && !this._helpers && !this._loadingHelpers && window.loadCardHelpers) {
+      this._loadingHelpers = window.loadCardHelpers().then((helpers) => {
+        this._helpers = helpers;
+        this._drawn = null;
+        this._render();
+      });
+    }
+  }
+
+  // Det inbäddade kortet för ett Eget kort, återanvänt så länge konfigurationen är densamma.
+  // Inget förrän HA:s verktyg för att skapa kort har laddats.
+  _embedded(row) {
+    if (!this._helpers) return [];
+    const config = JSON.stringify(row.card);
+    let card = this._cards.get(row.id);
+    if (card?.config !== config) {
+      card = { config, el: this._helpers.createCardElement(row.card) };
+      this._cards.set(row.id, card);
+    }
+    card.el.hass = this._hass;
+    return [card.el];
+  }
 }
-
-// Glöm de inbäddade korten för notiser som inte visas längre, och ladda HA:s verktyg för
-// att skapa kort första gången ett Eget kort ska visas.
-AttentionSpanCard.prototype._keepCards = function keepCards(shown) {
-  const ids = new Set(shown.filter((row) => row.type === "custom").map((row) => row.id));
-  for (const id of this._cards.keys()) if (!ids.has(id)) this._cards.delete(id);
-  if (ids.size && !this._helpers && !this._loadingHelpers && window.loadCardHelpers) {
-    this._loadingHelpers = window.loadCardHelpers().then((helpers) => {
-      this._helpers = helpers;
-      this._drawn = null;
-      this._render();
-    });
-  }
-};
-
-// Det inbäddade kortet för ett Eget kort, återanvänt så länge konfigurationen är densamma.
-// Inget förrän HA:s verktyg för att skapa kort har laddats.
-AttentionSpanCard.prototype._embedded = function embedded(row) {
-  if (!this._helpers) return [];
-  const config = JSON.stringify(row.card);
-  let card = this._cards.get(row.id);
-  if (card?.config !== config) {
-    card = { config, el: this._helpers.createCardElement(row.card) };
-    this._cards.set(row.id, card);
-  }
-  card.el.hass = this._hass;
-  return [card.el];
-};
 
 if (!customElements.get("attention-span-card")) {
   customElements.define("attention-span-card", AttentionSpanCard);

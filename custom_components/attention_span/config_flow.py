@@ -177,13 +177,14 @@ def _shown_fields(data: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _shows_progress(state: State | None) -> bool:
-    """Om entiteten visar tid kvar eller procent: en timer, en sluttid eller procent."""
+    """Om entiteten visar tid kvar eller procent: en timer, en sluttid, tid kvar eller procent."""
     if state is None:
         return False
     attributes = state.attributes
     return (
         state.domain == "timer"
-        or attributes.get(ATTR_DEVICE_CLASS) == SensorDeviceClass.TIMESTAMP
+        or attributes.get(ATTR_DEVICE_CLASS)
+        in (SensorDeviceClass.TIMESTAMP, SensorDeviceClass.DURATION)
         or attributes.get(ATTR_UNIT_OF_MEASUREMENT) == PERCENTAGE
     )
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from datetime import date, datetime, timedelta
-from typing import Any, cast
+from typing import Any, TypedDict, cast
 
 from homeassistant.core import (
     CALLBACK_TYPE,
@@ -34,8 +34,24 @@ REFRESH_INTERVAL = timedelta(minutes=15)
 # Samlar tätt efterföljande ändringar till en hämtning.
 COOLDOWN = 1.0
 
-# Ett tillfälle: när det börjar, för sortering, och det som står i dataformatet.
-type _Found = tuple[datetime, dict[str, Any]]
+
+class Occurrence(TypedDict):
+    """Ett tillfälle i attributet occurrences i dataformat version 1.
+
+    start och end är tidpunkter, eller datum för en heldagshändelse. En sensor har bara start.
+    """
+
+    start: str
+    end: str | None
+    summary: str | None
+
+
+# Ett tillfälle och när det börjar, för sortering.
+type _Found = tuple[datetime, Occurrence]
+
+
+def _is_calendar(entity_id: str) -> bool:
+    return split_entity_id(entity_id)[0] == "calendar"
 
 
 def _parse(value: str) -> date | datetime | None:
@@ -80,7 +96,9 @@ async def _async_calendar(hass: HomeAssistant, entity_id: str, now: datetime) ->
         found.append(
             (
                 _as_moment(start),
-                {"start": _as_text(start), "end": _as_text(end), "summary": event.get("summary")},
+                Occurrence(
+                    start=_as_text(start), end=_as_text(end), summary=event.get("summary")
+                ),
             )
         )
     return found
@@ -92,12 +110,12 @@ def _timestamp(hass: HomeAssistant, entity_id: str, now: datetime) -> list[_Foun
     moment = _parse(state.state) if state is not None else None
     if not isinstance(moment, datetime) or moment <= now:
         return []
-    return [(moment, {"start": _as_text(moment), "end": None, "summary": None})]
+    return [(moment, Occurrence(start=_as_text(moment), end=None, summary=None))]
 
 
 async def async_occurrences(
     hass: HomeAssistant, entity_ids: list[str], count: int
-) -> list[dict[str, Any]]:
+) -> list[Occurrence]:
     """De count närmaste tillfällena från alla källor, det tidigaste först.
 
     En kalenderhändelse som pågår räknas tills den slutar.
@@ -105,7 +123,7 @@ async def async_occurrences(
     now = dt_util.now()
     found: list[_Found] = []
     for entity_id in entity_ids:
-        if split_entity_id(entity_id)[0] == "calendar":
+        if _is_calendar(entity_id):
             found += await _async_calendar(hass, entity_id, now)
         else:
             found += _timestamp(hass, entity_id, now)
@@ -113,7 +131,7 @@ async def async_occurrences(
     return [occurrence for _, occurrence in found[:count]]
 
 
-def _passes(occurrence: dict[str, Any]) -> datetime:
+def _passes_at(occurrence: Occurrence) -> datetime:
     """När tillfället inte längre är kommande: när det slutar, eller börjar om det saknar slut."""
     moment = _parse(occurrence["end"] or occurrence["start"])
     assert moment is not None
@@ -132,7 +150,7 @@ class Upcoming:
         hass: HomeAssistant,
         entity_ids: list[str],
         count: int,
-        on_change: Callable[[list[dict[str, Any]]], None],
+        on_change: Callable[[list[Occurrence]], None],
     ) -> None:
         self._hass = hass
         self._entity_ids = entity_ids
@@ -148,7 +166,7 @@ class Upcoming:
         self._cancel_passes()
         if occurrences:
             self._unsub_passes = async_track_point_in_utc_time(
-                self._hass, self._refresh, _passes(occurrences[0])
+                self._hass, self._refresh, _passes_at(occurrences[0])
             )
         self._on_change(occurrences)
 
@@ -169,7 +187,7 @@ class Upcoming:
             self._refresh()
 
         unsubs = [async_track_state_change_event(self._hass, self._entity_ids, changed)]
-        if any(split_entity_id(entity_id)[0] == "calendar" for entity_id in self._entity_ids):
+        if any(_is_calendar(entity_id) for entity_id in self._entity_ids):
             unsubs.append(async_track_time_interval(self._hass, self._refresh, REFRESH_INTERVAL))
         await self._debouncer.async_call()
 

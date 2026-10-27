@@ -46,7 +46,7 @@
             "entity": "Entitet"
           },
           "data_description": {
-            "entity": "En timer, en sensor med en sluttid eller en sensor i procent."
+            "entity": "En timer, en sensor med en sluttid eller med tid kvar, eller en sensor i procent."
           }
         },
         "value": {
@@ -136,7 +136,7 @@
         "level_required": "Välj Alltid eller Villkor för minst en nivå.",
         "condition_required": "Lägg till ett villkor, eller välj Inget eller Alltid för nivån.",
         "invalid_condition": "Villkoret är ogiltigt.",
-        "progress_entity": "Välj en timer, en sensor med en sluttid eller en sensor i procent.",
+        "progress_entity": "Välj en timer, en sensor med en sluttid eller med tid kvar, eller en sensor i procent.",
         "entities_required": "Välj minst en kalender eller sensor.",
         "invalid_card": "Ange en kortkonfiguration med type, till exempel type: weather-forecast."
       },

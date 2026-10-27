@@ -32,7 +32,7 @@ from .const import (
     TYPE_UPCOMING,
 )
 from .evaluation import RuleLevel
-from .upcoming import Upcoming
+from .upcoming import Occurrence, Upcoming
 
 
 async def async_setup_entry(
@@ -102,7 +102,7 @@ class RuleSensor(SensorEntity, RestoreEntity):
             self.async_on_remove(await upcoming.async_start())
 
     @callback
-    def _async_occurrences(self, occurrences: list[dict[str, Any]]) -> None:
+    def _async_occurrences(self, occurrences: list[Occurrence]) -> None:
         if occurrences == self._attr_extra_state_attributes["occurrences"]:
             return
         self._attr_extra_state_attributes["occurrences"] = occurrences

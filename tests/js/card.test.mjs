@@ -325,16 +325,20 @@ function bar(el) {
   return fill ? parseFloat(fill.style.width) : null;
 }
 
-test("Förlopp med en sluttid visar tid kvar och en stapel för hur långt det har kommit", (t) => {
+// Diskmaskinen fick nivån Pågår för 20 min sedan.
+const DISKEN = notice("progress_ongoing", { attributes: { since: "2026-10-26T07:40:00+00:00" } });
+
+test("Förlopp med en sluttid visar tid kvar och en stapel från när notisen fick sin nivå", (t) => {
   t.mock.timers.enable({ apis: ["Date"], now: NOW });
-  // Sluttiden sattes för 20 min sedan och är om 40 min: en tredjedel har gått.
+  // Sluttiden är om 40 min och notisen fick sin nivå för 20 min sedan: en tredjedel har gått.
+  // Maskinen justerade sluttiden för 1 min sedan, vilket inte ska nollställa stapeln.
   const klar = entity(
     "sensor.diskmaskin_klar",
     "2026-10-26T08:40:00+00:00",
     { device_class: "timestamp" },
-    20,
+    1,
   );
-  const root = renderCard(fakeHass({ notices: [notice("progress_ongoing")], values: [klar] }));
+  const root = renderCard(fakeHass({ notices: [DISKEN], values: [klar] }));
 
   const card = root.querySelector(".notice.ongoing");
   assert.equal(text(card), "Diskmaskinen 40 min kvar");
@@ -567,4 +571,38 @@ test("varje Typ kan visas på varje nivå", async () => {
       assert.ok(content, `${name} på ${level}`);
     }
   }
+});
+
+test("Förlopp med en sensor för tid kvar visar tid kvar och en stapel från när notisen fick sin nivå", (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: NOW });
+  // Notisen fick sin nivå för 20 min sedan.
+  for (const [state, unit, left, done] of [
+    ["40", "min", "40 min", 33],
+    ["2400", "s", "40 min", 33],
+    ["0.5", "h", "30 min", 40],
+  ]) {
+    const kvar = entity("sensor.diskmaskin_klar", state, { device_class: "duration", unit_of_measurement: unit });
+    const root = renderCard(fakeHass({ notices: [DISKEN], values: [kvar] }));
+
+    const card = root.querySelector(".notice.ongoing");
+    assert.equal(text(card), `Diskmaskinen ${left} kvar`, unit);
+    assert.equal(Math.round(bar(card)), done, unit);
+  }
+});
+
+test("en entitet med gruppmedlemmar i group_entities räknas som en grupp", () => {
+  const lampor = entity(
+    "light.kok",
+    "on",
+    { group_entities: ["light.kok_1", "light.kok_2", "light.kok_3"] },
+    10,
+  );
+  const root = renderCard(
+    fakeHass({
+      notices: [notice("status_group_ongoing", { attributes: { entities: ["light.kok"] } })],
+      values: [lampor, entity("light.kok_1", "on"), entity("light.kok_2", "off"), entity("light.kok_3", "on")],
+    }),
+  );
+
+  assert.equal(text(root.querySelector(".notice")), "Fönster on · 2 av 3");
 });
