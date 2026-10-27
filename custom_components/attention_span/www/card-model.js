@@ -16,7 +16,8 @@ const DRAWN_TYPES = ["value", "status", "progress", "upcoming", "custom"];
 // tillståndet och hur länge det har gällt, och group hur många medlemmar i en grupp som har
 // gruppens tillstånd. left är tid kvar för Typen Förlopp. now, soon,
 // today och tomorrow säger när ett tillfälle för Typen Kommande är. moreAlarms och
-// moreProblems står för Larmen och Problemen efter det första, med Larmens namn.
+// moreProblems står för Larmen och Problemen efter det första, med Larmens namn; Larmens
+// stapel har ett brett plustecken (＋) som i specen, så att det syns på den röda stapeln.
 const STRINGS = {
   en: {
     calm: "All is calm at home.",

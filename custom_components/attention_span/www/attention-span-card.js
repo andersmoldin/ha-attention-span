@@ -326,6 +326,13 @@ function moreElement(level, showAll) {
   return { el, update: (moreText) => setText(el, moreText) };
 }
 
+// Nivåerna där bara det första visas i full storlek och resten bakom en knapp, med knappens
+// text för resten.
+const MORE = {
+  alarm: (text, rest) => text.moreAlarms(rest.map((row) => row.name)),
+  problem: (text, rest) => text.moreProblems(rest.length),
+};
+
 // Hur en notis byggs: som eget kort (notice) eller som rad (row), med ett inbäddat kort för
 // Eget kort och annars med text.
 const ELEMENTS = {
@@ -373,7 +380,7 @@ class AttentionSpanCard extends HTMLElement {
       this._calm = calmElement();
       this._rowsCard = document.createElement("ha-card");
       this._more = Object.fromEntries(
-        ["alarm", "problem"].map((level) => [
+        Object.keys(MORE).map((level) => [
           level,
           moreElement(level, () => {
             this._showAll.add(level);
@@ -387,6 +394,8 @@ class AttentionSpanCard extends HTMLElement {
     const calmText = strings(this._hass).calm;
     // De inbäddade korten visar egna entiteter och behöver varje ny hass.
     for (const { el } of this._cards.values()) el.hass = this._hass;
+    // En nivå visar bara det första igen när resten har försvunnit.
+    for (const level of this._showAll) if (model[level].length < 2) this._showAll.delete(level);
     // Inget att göra när det kortet visar är detsamma som förra gången.
     const drawn = JSON.stringify([model, calmText, [...this._showAll]]);
     if (drawn === this._drawn) return;
@@ -418,18 +427,14 @@ class AttentionSpanCard extends HTMLElement {
   }
 
   // Notiserna på en nivå som egna kort. På Larm och Problem visas det första och en knapp för
-  // resten, tills knappen trycks; nivån visar bara det första igen när resten har försvunnit.
+  // resten, tills knappen trycks.
   _noticesAt(level, rows, draw) {
-    const more = this._more[level];
-    if (!more || rows.length < 2) this._showAll.delete(level);
-    if (!more || rows.length < 2 || this._showAll.has(level)) {
+    if (!MORE[level] || rows.length < 2 || this._showAll.has(level)) {
       return rows.map((row) => draw("notice", row, level));
     }
     const [first, ...rest] = rows;
-    const text = strings(this._hass);
-    more.update(
-      level === "alarm" ? text.moreAlarms(rest.map((row) => row.name)) : text.moreProblems(rest.length),
-    );
+    const more = this._more[level];
+    more.update(MORE[level](strings(this._hass), rest));
     return [draw("notice", first, level), more.el];
   }
 

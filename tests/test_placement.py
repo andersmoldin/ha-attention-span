@@ -179,3 +179,17 @@ async def test_the_form_starts_over_when_the_rule_it_places_after_is_removed(has
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "rules_changed"
     assert len(entry.subentries) == 0
+
+
+async def test_keeping_the_suggested_placement_changes_no_rule_between_other_levels(
+    hass: HomeAssistant,
+):
+    entry = await add_integration(hass)
+    await add_rule(hass, entry, "value", BILEN, ALWAYS_GLANCE)
+    await add_rule(hass, entry, "value", ELPRIS, ALWAYS_QUIET)
+    inne = await add_rule(hass, entry, "value", INNE, ALWAYS_GLANCE)
+    assert priorities(hass, "bilen", "elpris", "inne") == [1, 2, 3]
+
+    await reconfigure_rule(hass, entry, inne, INNE, ALWAYS_GLANCE)
+
+    assert priorities(hass, "bilen", "elpris", "inne") == [1, 2, 3]
