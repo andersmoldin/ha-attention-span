@@ -9,6 +9,7 @@ from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
 from homeassistant.config_entries import ConfigEntry, ConfigSubentry
 from homeassistant.const import ATTR_RESTORED
 from homeassistant.core import Event, EventStateChangedData, HomeAssistant, callback
+from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.event import async_track_state_change_event
@@ -18,6 +19,7 @@ from homeassistant.util import dt as dt_util
 from homeassistant.util import slugify
 
 from .const import (
+    ALARM,
     CONF_ACTIONS,
     CONF_CARD,
     CONF_COUNT,
@@ -41,6 +43,7 @@ from .const import (
     TYPE_UPCOMING,
 )
 from .evaluation import RuleLevel
+from .lifecycle import Acknowledgement, flap_limit, realarm_after
 from .reason import REASON_NONE, Reason, async_variables, parse_since, reason_source
 from .since import DATA_SINCE, SavedRule, SavedState
 from .upcoming import Occurrence, Upcoming
@@ -83,6 +86,8 @@ class RuleSensor(SensorEntity, RestoreEntity):
             "entities": list(data[CONF_ENTITIES]),
             "actions": list(data.get(CONF_ACTIONS, [])),
             "since": dt_util.utcnow().isoformat(),
+            "acknowledged": False,
+            "realarm_at": None,
         }
         if data[CONF_TYPE] == TYPE_STATUS:
             # När den visade entiteten fick sitt tillstånd, för «hur länge». Entitetens
@@ -99,6 +104,14 @@ class RuleSensor(SensorEntity, RestoreEntity):
         self._store = self.hass.data[DATA_SINCE]
         saved = self._store.get(self._rule_id)
         self._shown = saved.get("state")
+        self._acknowledgement = Acknowledgement(
+            self.hass,
+            realarm_after(self._rule),
+            flap_limit(self._rule),
+            saved.get("acknowledgement"),
+            self._async_acknowledgement_changed,
+        )
+        self.async_on_remove(self._acknowledgement.async_unload)
         # Går ett villkor inte att bygga, till exempel för att dess enhet har tagits bort,
         # loggar HA felet och visar regeln som otillgänglig.
         evaluation = await RuleLevel.async_create(
@@ -120,6 +133,9 @@ class RuleSensor(SensorEntity, RestoreEntity):
         if stored.get("rule") == self.unique_id:
             self._attr_native_value = stored["level"]
             self._attr_extra_state_attributes["since"] = stored["since"]
+        self._attr_extra_state_attributes.update(
+            self._acknowledgement.attributes(self._attr_native_value)
+        )
         self.async_on_remove(
             async_dispatcher_connect(
                 self.hass, SIGNAL_PRIORITY.format(self._rule_id), self._async_priority_changed
@@ -222,17 +238,45 @@ class RuleSensor(SensorEntity, RestoreEntity):
         saved = SavedRule(conditions={key: since.isoformat() for key, since in started.items()})
         if self._shown is not None:
             saved["state"] = self._shown
+        if (acknowledgement := self._acknowledgement.saved) is not None:
+            saved["acknowledgement"] = acknowledgement
         self._store.async_set(self._rule_id, saved)
 
     @callback
     def _async_reevaluate(self) -> None:
         level = self._evaluation.evaluate()
+        self._acknowledgement.async_level(level)
         self._async_save()
-        if level == self._attr_native_value:
+        acknowledgement = self._acknowledgement.attributes(level)
+        attributes = self._attr_extra_state_attributes
+        if level == self._attr_native_value and acknowledgement.items() <= attributes.items():
             return
-        self._attr_native_value = level
-        self._attr_extra_state_attributes["since"] = dt_util.utcnow().isoformat()
+        if level != self._attr_native_value:
+            self._attr_native_value = level
+            attributes["since"] = dt_util.utcnow().isoformat()
+        attributes.update(acknowledgement)
         self.async_write_ha_state()
+
+    @callback
+    def _async_acknowledgement_changed(self) -> None:
+        """Kvitteringen har gått ut medan nivån stod still."""
+        self._async_save()
+        acknowledgement = self._acknowledgement.attributes(self._attr_native_value)
+        if acknowledgement.items() <= self._attr_extra_state_attributes.items():
+            return
+        self._attr_extra_state_attributes.update(acknowledgement)
+        self.async_write_ha_state()
+
+    async def async_acknowledge(self) -> None:
+        """Tjänsten acknowledge: kvittera Larmet för hela hushållet."""
+        if self._attr_native_value != ALARM:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="not_alarm",
+                translation_placeholders={"entity_id": self.entity_id},
+            )
+        self._acknowledgement.async_acknowledge()
+        self._async_acknowledgement_changed()
 
     @property
     def extra_restore_state_data(self) -> ExtraStoredData:

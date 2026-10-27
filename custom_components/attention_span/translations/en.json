@@ -157,6 +157,18 @@
           "data_description": {
             "actions": "Each action is one service call without templates."
           }
+        },
+        "timing": {
+          "title": "Acknowledgement and flap limit",
+          "description": "An acknowledged Alarm stays in compact form until its condition has let go or the time to alarm again has passed. A condition only counts as let go when the rule has been below the level for longer than the flap limit.",
+          "data": {
+            "realarm_after": "Alarm again after acknowledgement",
+            "flap_limit": "Flap limit"
+          },
+          "data_description": {
+            "realarm_after": "An acknowledged Alarm that lasts alarms again after this long. Empty means never.",
+            "flap_limit": "A shorter break, for example a sensor that switches on and off, does not reset the acknowledgement."
+          }
         }
       },
       "error": {
@@ -168,7 +180,8 @@
         "entities_required": "Choose at least one calendar or sensor.",
         "invalid_card": "Enter a card configuration with a type, for example type: weather-forecast.",
         "template_required": "Write a template, or pick a ready-made one.",
-        "invalid_action": "Each action needs a button text and exactly one service call without templates, with the service under action (not service)."
+        "invalid_action": "Each action needs a button text and exactly one service call without templates, with the service under action (not service).",
+        "realarm_positive": "Enter a time longer than 0, or leave the field empty to never alarm again."
       },
       "abort": {
         "reconfigure_successful": "The rule has been updated.",
@@ -245,5 +258,16 @@
   "placement": {
     "first": "First",
     "after": "After {rule}"
+  },
+  "services": {
+    "acknowledge": {
+      "name": "Acknowledge",
+      "description": "Acknowledges an Alarm for the whole household. The Alarm stays in compact form until its condition has let go or the time to alarm again has passed."
+    }
+  },
+  "exceptions": {
+    "not_alarm": {
+      "message": "{entity_id} is not an Alarm. Only Alarms can be acknowledged."
+    }
   }
 }

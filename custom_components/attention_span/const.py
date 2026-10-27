@@ -32,9 +32,16 @@ CONF_REASON: Final = "reason"
 CONF_REASON_TEMPLATE: Final = "reason_template"
 # Åtgärderna: tjänsteanrop som kortet visar som knappar.
 CONF_ACTIONS: Final = "actions"
+# Hur länge ett kvitterat Larm väntar innan det larmar igen; None betyder aldrig.
+CONF_REALARM_AFTER: Final = "realarm_after"
+# Fladdergränsen: hur länge regeln måste ha varit under en nivå innan villkoret räknas som
+# släppt.
+CONF_FLAP_LIMIT: Final = "flap_limit"
 
 # Nivåerna, den allvarligaste först (ADR 0002).
 LEVELS: Final = ("alarm", "problem", "ongoing", "glance", "quiet")
+# Larm, den enda nivån som kan kvitteras.
+ALARM: Final = "alarm"
 # Tillståndet när ingen nivå gäller. Ingen nivå i sig.
 HIDDEN: Final = "hidden"
 # Värdet för en nivå i CONF_LEVELS som gäller utan villkor. Övriga nivåer i CONF_LEVELS
@@ -44,3 +51,5 @@ ALWAYS: Final = "always"
 # Dataformatets version. Ändringar som bryter kontraktet kräver ett nytt värde.
 CONTRACT_VERSION: Final = 1
 SOURCE_RULE: Final = "rule"
+
+SERVICE_ACKNOWLEDGE: Final = "acknowledge"

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from homeassistant.components.sensor import SensorDeviceClass
@@ -29,6 +29,8 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.selector import (
     ActionSelector,
     ConditionSelector,
+    DurationSelector,
+    DurationSelectorConfig,
     EntitySelector,
     EntitySelectorConfig,
     IconSelector,
@@ -48,15 +50,18 @@ from homeassistant.helpers.template import is_template_string
 from homeassistant.helpers.translation import async_get_translations
 
 from .const import (
+    ALARM,
     ALWAYS,
     CONF_ACTIONS,
     CONF_CARD,
     CONF_COUNT,
     CONF_ENTITIES,
+    CONF_FLAP_LIMIT,
     CONF_HIDE,
     CONF_ICON,
     CONF_LEVELS,
     CONF_PRIORITY,
+    CONF_REALARM_AFTER,
     CONF_REASON,
     CONF_REASON_TEMPLATE,
     CONF_TYPE,
@@ -71,6 +76,7 @@ from .const import (
     TYPES,
 )
 from .evaluation import async_validate_conditions
+from .lifecycle import DEFAULT_FLAP_LIMIT, DEFAULT_REALARM_AFTER
 from .reason import (
     REASON_CUSTOM,
     REASON_NONE,
@@ -101,6 +107,9 @@ ACTION_CONFIRMATION = "confirmation"
 # den står efter.
 CONF_PLACEMENT = "placement"
 PLACEMENT_FIRST = "first"
+# Tiderna som formuläret föreslår, i durationsväljarens form.
+SUGGESTED_REALARM_AFTER = {"hours": DEFAULT_REALARM_AFTER // timedelta(hours=1)}
+SUGGESTED_FLAP_LIMIT = {"minutes": DEFAULT_FLAP_LIMIT // timedelta(minutes=1)}
 # Det i ett tjänsteanrop från HA:s åtgärdsväljare som kortet kan anropa. metadata och alias
 # lägger väljaren själv till och påverkar inte anropet.
 _ACTION_KEYS = {"action", "target", "data", "metadata", "alias"}
@@ -355,6 +364,7 @@ class RuleSubentryFlow(ConfigSubentryFlow):
     # Placeringen som valts: PLACEMENT_FIRST eller regeln den står efter. None när formuläret
     # inte frågade, för att ingen annan regel kan hamna på samma nivå.
     _placement: str | None = None
+    _actions: list[dict[str, Any]]
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> SubentryFlowResult:
         if user_input is not None:
@@ -406,6 +416,8 @@ class RuleSubentryFlow(ConfigSubentryFlow):
             CONF_REASON: data.get(CONF_REASON, REASON_NONE),
             CONF_REASON_TEMPLATE: data.get(CONF_REASON_TEMPLATE),
             CONF_ACTIONS: [_action_fields(action) for action in data.get(CONF_ACTIONS, [])],
+            CONF_REALARM_AFTER: data.get(CONF_REALARM_AFTER, SUGGESTED_REALARM_AFTER),
+            CONF_FLAP_LIMIT: data.get(CONF_FLAP_LIMIT, SUGGESTED_FLAP_LIMIT),
         }
         return await self._async_step_fields("reconfigure", user_input)
 
@@ -660,7 +672,8 @@ class RuleSubentryFlow(ConfigSubentryFlow):
             except vol.Invalid:
                 errors[CONF_ACTIONS] = "invalid_action"
             else:
-                return self._async_finish(actions)
+                self._actions = actions
+                return await self.async_step_timing()
         current = user_input or self._current
         return self.async_show_form(
             step_id="actions",
@@ -675,7 +688,43 @@ class RuleSubentryFlow(ConfigSubentryFlow):
             errors=errors,
         )
 
-    def _async_finish(self, actions: list[dict[str, Any]]) -> SubentryFlowResult:
+    async def async_step_timing(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """«Larma igen efter kvittering», bara när regeln kan bli Larm, och fladdergränsen.
+
+        Ett tomt «larma igen» betyder aldrig.
+        """
+        can_alarm = ALARM in self._modes
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            realarm = user_input.get(CONF_REALARM_AFTER)
+            if realarm is not None and cv.time_period_dict(realarm) <= timedelta(0):
+                errors[CONF_REALARM_AFTER] = "realarm_positive"
+            else:
+                return self._async_finish(user_input)
+        current: Mapping[str, Any] = {
+            CONF_REALARM_AFTER: SUGGESTED_REALARM_AFTER,
+            CONF_FLAP_LIMIT: SUGGESTED_FLAP_LIMIT,
+            **self._current,
+        }
+        if user_input is not None:
+            current = {CONF_REALARM_AFTER: None, **user_input}
+        fields: dict[Any, Any] = {}
+        if can_alarm:
+            fields[
+                vol.Optional(
+                    CONF_REALARM_AFTER,
+                    description={"suggested_value": current[CONF_REALARM_AFTER]},
+                )
+            ] = DurationSelector(DurationSelectorConfig(enable_day=True))
+        fields[
+            vol.Required(CONF_FLAP_LIMIT, description={"suggested_value": current[CONF_FLAP_LIMIT]})
+        ] = DurationSelector()
+        return self.async_show_form(step_id="timing", data_schema=vol.Schema(fields), errors=errors)
+
+    def _async_finish(self, timing: Mapping[str, Any]) -> SubentryFlowResult:
+        actions = self._actions
         conditions = self._conditions
         data: dict[str, Any] = {
             CONF_TYPE: self._type,
@@ -696,6 +745,9 @@ class RuleSubentryFlow(ConfigSubentryFlow):
             data[CONF_REASON_TEMPLATE] = template
         if actions:
             data[CONF_ACTIONS] = actions
+        if ALARM in self._modes:
+            data[CONF_REALARM_AFTER] = timing.get(CONF_REALARM_AFTER)
+        data[CONF_FLAP_LIMIT] = timing[CONF_FLAP_LIMIT]
         title = self._fields[CONF_NAME].strip()
         priority = self._async_place()
         if priority is None:

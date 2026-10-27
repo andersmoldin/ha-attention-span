@@ -157,6 +157,18 @@
           "data_description": {
             "actions": "Varje åtgärd är ett tjänsteanrop utan templates."
           }
+        },
+        "timing": {
+          "title": "Kvittering och fladdergräns",
+          "description": "Ett kvitterat Larm ligger kvar i kompakt form tills villkoret har släppt eller tiden för «larma igen» har gått. Ett villkor räknas som släppt först när regeln har varit under nivån längre än fladdergränsen.",
+          "data": {
+            "realarm_after": "Larma igen efter kvittering",
+            "flap_limit": "Fladdergräns"
+          },
+          "data_description": {
+            "realarm_after": "Ett kvitterat Larm som består larmar igen efter så här lång tid. Tomt betyder aldrig.",
+            "flap_limit": "Ett kortare avbrott, till exempel en givare som slår av och på, nollställer inte kvitteringen."
+          }
         }
       },
       "error": {
@@ -168,7 +180,8 @@
         "entities_required": "Välj minst en kalender eller sensor.",
         "invalid_card": "Ange en kortkonfiguration med type, till exempel type: weather-forecast.",
         "template_required": "Skriv en template, eller välj en färdig mall.",
-        "invalid_action": "Varje åtgärd behöver en knapptext och precis ett tjänsteanrop utan templates, med tjänsten under action (inte service)."
+        "invalid_action": "Varje åtgärd behöver en knapptext och precis ett tjänsteanrop utan templates, med tjänsten under action (inte service).",
+        "realarm_positive": "Ange en tid längre än 0, eller lämna fältet tomt för att aldrig larma igen."
       },
       "abort": {
         "reconfigure_successful": "Regeln har ändrats.",
@@ -245,5 +258,16 @@
   "placement": {
     "first": "Först",
     "after": "Efter {rule}"
+  },
+  "services": {
+    "acknowledge": {
+      "name": "Kvittera",
+      "description": "Kvitterar ett Larm för hela hushållet. Larmet ligger kvar i kompakt form tills villkoret har släppt eller tiden för «larma igen» har gått."
+    }
+  },
+  "exceptions": {
+    "not_alarm": {
+      "message": "{entity_id} är inte ett Larm. Bara Larm kan kvitteras."
+    }
   }
 }

@@ -5,10 +5,17 @@ from contextlib import asynccontextmanager
 
 import pytest
 from homeassistant import config_entries, loader
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import CoreState, HomeAssistant
+from homeassistant.config_entries import (
+    SIGNAL_CONFIG_ENTRY_CHANGED,
+    ConfigEntry,
+    ConfigEntryChange,
+    ConfigEntryState,
+)
+from homeassistant.const import EVENT_STATE_CHANGED, STATE_UNAVAILABLE
+from homeassistant.core import CoreState, Event, HomeAssistant, callback
 from homeassistant.data_entry_flow import FlowResult, FlowResultType
 from homeassistant.helpers import restore_state
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from pytest_homeassistant_custom_component.common import (
     async_mock_load_restore_state_from_storage,
     async_test_home_assistant,
@@ -115,6 +122,7 @@ async def add_rule(
     reason: dict | None = None,
     actions: list[dict] | None = None,
     placement: str | None = None,
+    timing: dict | None = None,
 ) -> str:
     """Lägg till en Rule via subentry-flödet och returnera subentryns id.
 
@@ -122,7 +130,8 @@ async def add_rule(
     conditions villkoren för nivåerna med Villkor och för Dölj när. reason är
     orsaksstegets fält (utelämnat är ingen orsak) och actions åtgärderna. placement är
     placeringen, «first» eller regeln den står efter, när formuläret frågar efter den
-    (utelämnad behåller förvalet).
+    (utelämnad behåller förvalet). timing är tidernas fält, «larma igen» och fladdergränsen
+    (utelämnat behåller det formuläret föreslår).
     """
     before = set(entry.subentries)
     result = await start_rule(hass, entry, rule_type)
@@ -136,7 +145,7 @@ async def add_rule(
         result["flow_id"], conditions or {}
     )
     result = await submit_placement(hass, result, placement)
-    result = await submit_reason_and_actions(hass, result, reason, actions)
+    result = await submit_reason_and_actions(hass, result, reason, actions, timing)
     assert result["type"] is FlowResultType.CREATE_ENTRY
     await hass.async_block_till_done()
     (added,) = set(entry.subentries) - before
@@ -153,8 +162,10 @@ async def reconfigure_rule(
     reason: dict | None = None,
     actions: list[dict] | None = None,
     placement: str | None = None,
+    timing: dict | None = None,
 ) -> None:
-    """Ändra en Rule; levels, conditions, reason, actions och placement som i add_rule."""
+    """Ändra en Rule; levels, conditions, reason, actions, placement och timing som i
+    add_rule."""
     result = await start_rule_reconfigure(hass, entry, subentry_id)
     result = await hass.config_entries.subentries.async_configure(result["flow_id"], fields)
     assert result["step_id"] == "levels"
@@ -166,7 +177,7 @@ async def reconfigure_rule(
         result["flow_id"], conditions or {}
     )
     result = await submit_placement(hass, result, placement)
-    result = await submit_reason_and_actions(hass, result, reason, actions)
+    result = await submit_reason_and_actions(hass, result, reason, actions, timing)
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "reconfigure_successful"
     await hass.async_block_till_done()
@@ -197,13 +208,27 @@ async def submit_reason(hass: HomeAssistant, result: FlowResult, reason: dict) -
 
 
 async def submit_reason_and_actions(
-    hass: HomeAssistant, result: FlowResult, reason: dict | None, actions: list[dict] | None
+    hass: HomeAssistant,
+    result: FlowResult,
+    reason: dict | None,
+    actions: list[dict] | None,
+    timing: dict | None = None,
 ) -> FlowResult:
+    """Fyll i orsaken, åtgärderna och tiderna; timing som i add_rule."""
     result = await submit_reason(hass, result, reason or {"reason": "none"})
     assert result["step_id"] == "actions"
-    return await hass.config_entries.subentries.async_configure(
+    result = await hass.config_entries.subentries.async_configure(
         result["flow_id"], {"actions": actions or []}
     )
+    assert result["step_id"] == "timing"
+    if timing is None:
+        # Som formuläret visar det: de föreslagna tiderna, och tomt där det inte föreslår någon.
+        timing = {
+            str(key): value
+            for key in result["data_schema"].schema
+            if (value := (key.description or {}).get("suggested_value")) is not None
+        }
+    return await hass.config_entries.subentries.async_configure(result["flow_id"], timing)
 
 
 def state_as_contract(hass: HomeAssistant, entity_id: str) -> dict | None:
@@ -216,3 +241,25 @@ def state_as_contract(hass: HomeAssistant, entity_id: str) -> dict | None:
         "state": state.state,
         "attributes": dict(state.attributes),
     }
+
+
+def watch(hass: HomeAssistant, entry: ConfigEntry) -> tuple[list[str], list[str]]:
+    """Följ entiteterna och posten: entiteter som blir otillgängliga eller försvinner, och
+    varje gång posten laddas ur."""
+    gone: list[str] = []
+    unloads: list[str] = []
+
+    @callback
+    def state_changed(event: Event) -> None:
+        new = event.data["new_state"]
+        if new is None or new.state == STATE_UNAVAILABLE:
+            gone.append(event.data["entity_id"])
+
+    @callback
+    def entry_changed(change: ConfigEntryChange, changed: ConfigEntry) -> None:
+        if changed.entry_id == entry.entry_id and changed.state is ConfigEntryState.NOT_LOADED:
+            unloads.append(changed.entry_id)
+
+    hass.bus.async_listen(EVENT_STATE_CHANGED, state_changed)
+    async_dispatcher_connect(hass, SIGNAL_CONFIG_ENTRY_CHANGED, entry_changed)
+    return gone, unloads

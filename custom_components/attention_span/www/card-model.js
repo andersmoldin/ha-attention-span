@@ -18,12 +18,17 @@ const DRAWN_TYPES = ["value", "status", "progress", "upcoming", "custom"];
 // today och tomorrow säger när ett tillfälle för Typen Kommande är. moreAlarms och
 // moreProblems står för Larmen och Problemen efter det första, med Larmens namn; Larmens
 // stapel har ett brett plustecken (＋) som i specen, så att det syns på den röda stapeln.
+// acknowledge är knappen som kvitterar ett Larm, och acknowledged och realarm texten på ett
+// kvitterat Larm: utan och med hur länge det är kvar tills det larmar igen.
 const STRINGS = {
   en: {
     calm: "All is calm at home.",
     moreAlarms: (names) =>
       `＋${names.length} more ${names.length === 1 ? "alarm" : "alarms"}: ${names.join(", ")}`,
     moreProblems: (count) => `+${count} more ${count === 1 ? "problem" : "problems"}`,
+    acknowledge: "Acknowledge",
+    acknowledged: "Acknowledged",
+    realarm: (duration) => `Acknowledged · alarms again in ${duration}`,
     status: (state, duration) => `${state} for ${duration}`,
     group: (state, count, total) => `${state} · ${count} of ${total}`,
     left: (duration) => `${duration} left`,
@@ -36,6 +41,9 @@ const STRINGS = {
     calm: "Allt är lugnt hemma.",
     moreAlarms: (names) => `＋${names.length} larm till: ${names.join(", ")}`,
     moreProblems: (count) => `+${count} problem till`,
+    acknowledge: "Kvittera",
+    acknowledged: "Kvitterad",
+    realarm: (duration) => `Kvitterad · larmar igen om ${duration}`,
     status: (state, duration) => `${state} i ${duration}`,
     group: (state, count, total) => `${state} · ${count} av ${total}`,
     left: (duration) => `${duration} kvar`,
@@ -218,19 +226,36 @@ function actions(list) {
     }));
 }
 
+// Om notisen är ett kvitterat Larm.
+const isAcknowledged = (stateObj) =>
+  stateObj.state === "alarm" && stateObj.attributes.acknowledged === true;
+
+// Texten på ett kvitterat Larm: när det larmar igen, om det gör det.
+function acknowledgedText(hass, realarmAt, now) {
+  const text = strings(hass);
+  const realarm = Date.parse(realarmAt ?? "");
+  if (!Number.isFinite(realarm)) return text.acknowledged;
+  return text.realarm(duration(realarm - now, language(hass), Math.ceil));
+}
+
 // En notis som kortet ritar. text är orsaken när regeln har en, annars det Typen visar; ett
-// Värde utan orsak står före namnet på Blick och Tyst (valueFirst). moreInfo är entiteten som
-// ett tryck visar i HA:s detaljdialog: den första som notisen visar, annars notisen själv.
+// kvitterat Larm säger i stället att det är kvitterat. Ett Värde utan orsak står före namnet
+// på Blick och Tyst (valueFirst). moreInfo är entiteten som ett tryck visar i HA:s
+// detaljdialog: den första som notisen visar, annars notisen själv. acknowledgeable är ett
+// Larm som går att kvittera.
 function row(hass, stateObj, now) {
   const a = stateObj.attributes;
   const { text, fraction = null } = content(hass, a, now);
   const reason = typeof a.reason === "string" && a.reason ? a.reason : null;
+  const acknowledged = isAcknowledged(stateObj);
   return {
     id: stateObj.entity_id,
     name: a.friendly_name ?? stateObj.entity_id,
     icon: a.icon ?? null,
     type: a.type,
-    text: reason ?? text,
+    text: acknowledged ? acknowledgedText(hass, a.realarm_at, now) : (reason ?? text),
+    acknowledged,
+    acknowledgeable: stateObj.state === "alarm" && !acknowledged,
     valueFirst: a.type === "value" && !reason,
     fraction,
     card: a.type === "custom" ? a.card : null,
@@ -239,9 +264,11 @@ function row(hass, stateObj, now) {
   };
 }
 
-// Regelns ordningstal, lägst först; entitets-id avgör mellan lika tal. Tillgänglighet
-// saknar ordningstal och kommer före reglerna.
-function byRuleOrder(a, b) {
+// Okvitterade Larm före kvitterade, sedan regelns ordningstal, lägst först; entitets-id avgör
+// mellan lika tal. Tillgänglighet saknar ordningstal och kommer före reglerna.
+function byNoticeOrder(a, b) {
+  const known = isAcknowledged(a) - isAcknowledged(b);
+  if (known !== 0) return known;
   const pa = a.attributes.priority ?? -Infinity;
   const pb = b.attributes.priority ?? -Infinity;
   if (pa !== pb) return pa < pb ? -1 : 1;
@@ -257,7 +284,7 @@ export function cardModel(hass, now) {
   const atLevel = (level) =>
     notices
       .filter((s) => s.state === level && DRAWN_TYPES.includes(s.attributes.type))
-      .sort(byRuleOrder)
+      .sort(byNoticeOrder)
       .map((s) => row(hass, s, now));
   return {
     calm: !notices.some((s) => NEEDS_ATTENTION.includes(s.state)),

@@ -1,5 +1,5 @@
-"""När en Rules villkor och visade tillstånd började gälla, sparat i HA:s Store så att det
-överlever en omstart.
+"""När en Rules villkor och visade tillstånd började gälla, och kvitteringen av dess Larm,
+sparat i HA:s Store så att det överlever en omstart.
 
 Källentiteterna får nya last_changed när deras integrationer laddas efter en omstart, så
 HA:s egna villkor och tider räknar då från omstarten.
@@ -16,6 +16,7 @@ from homeassistant.helpers.storage import Store
 from homeassistant.util.hass_dict import HassKey
 
 from .const import DOMAIN
+from .lifecycle import SavedAcknowledgement
 
 STORAGE_KEY = f"{DOMAIN}.since"
 STORAGE_VERSION = 1
@@ -40,6 +41,8 @@ class SavedRule(TypedDict, total=False):
     # Villkoret med tid, utan tiden, som JSON -> när det började gälla.
     conditions: dict[str, str]
     state: SavedState
+    # Saknas när Larmet inte är kvitterat.
+    acknowledgement: SavedAcknowledgement
 
 
 class SinceStore:

@@ -30,6 +30,11 @@ const STYLE = `
     color: var(--text-primary-color); background: var(--error-color); }
   .alarm b { font-size: 20px; color: var(--error-color); }
   .alarm small { color: var(--primary-text-color); }
+  /* Ett kvitterat Larm ligger kvar i kompakt form. */
+  .alarm.acknowledged { padding: 12px 16px; border-width: 1px; }
+  .alarm.acknowledged ha-icon { width: 42px; height: 42px; border-radius: 14px;
+    --mdc-icon-size: 24px; }
+  .alarm.acknowledged b { font-size: 16px; }
   .problem { border-width: 1px; border-style: solid; border-color: var(--warning-color); }
   .problem::before { background: var(--warning-color); }
   .problem ha-icon { color: var(--warning-color); }
@@ -160,16 +165,27 @@ function moreInfoPart(el) {
 
 // Åtgärderna som knappar. Ett tryck ber HA anropa tjänsten som en knapp i Lovelace gör
 // (hass-action), så att HA:s egen dialog frågar med bekräftelsetexten först när den finns.
-// Knapparna byggs bara om när åtgärderna ändras. Utan åtgärder är raden tom och dold.
-function actionsPart() {
+// Ett Larm som går att kvittera har knappen Kvittera först, som anropar acknowledge med
+// notisens entitet. Knapparna byggs bara om när åtgärderna ändras, och Kvittera visas och
+// döljs på plats. Utan knappar är raden tom och dold.
+function actionsPart(acknowledge) {
   const el = document.createElement("div");
   el.className = "actions";
+  let entity = null;
+  const acknowledgeButton = document.createElement("button");
+  acknowledgeButton.type = "button";
+  acknowledgeButton.addEventListener("click", () => acknowledge(entity));
   let drawn = null;
-  const update = (entityId, actions) => {
-    const key = JSON.stringify([entityId, actions]);
-    if (key === drawn) return;
-    drawn = key;
-    el.replaceChildren(...actions.map((action) => actionButton(entityId, action)));
+  let buttons = [];
+  const update = (row, text) => {
+    entity = row.id;
+    const key = JSON.stringify([row.id, row.actions]);
+    if (key !== drawn) {
+      drawn = key;
+      buttons = row.actions.map((action) => actionButton(row.id, action));
+    }
+    setText(acknowledgeButton, text.acknowledge);
+    placeChildren(el, [...(row.acknowledgeable ? [acknowledgeButton] : []), ...buttons]);
   };
   return { el, update };
 }
@@ -221,44 +237,45 @@ function headElement() {
 }
 
 // Larm, Problem och Pågår: ett eget kort per notis, med namnet över det Typen visar eller
-// orsaken, och åtgärderna under.
-function noticeElement(level) {
+// orsaken, och åtgärderna under. Ett kvitterat Larm är kompakt.
+function noticeElement(level, card) {
   const el = document.createElement("ha-card");
   el.className = `notice ${level}`;
   const { head, icon, moreInfo } = headElement();
   const body = document.createElement("span");
   head.append(body);
-  const actions = actionsPart();
+  const actions = actionsPart(card.acknowledge);
   el.append(head, actions.el);
   const texts = textParts(body);
   return {
     el,
-    update: (row) => {
+    update: (row, text) => {
+      el.classList.toggle("acknowledged", row.acknowledged);
       setIcon(icon, row.icon);
       texts(row.name, row.text, row.fraction);
       moreInfo(row.moreInfo);
-      actions.update(row.id, row.actions);
+      actions.update(row, text);
     },
   };
 }
 
 // Blick och Tyst: en rad med åtgärderna sist. Ett Värde utan orsak står före namnet, annars
 // står namnet först.
-function rowElement(level) {
+function rowElement(level, card) {
   const el = document.createElement("div");
   el.className = level;
   const { head, icon, moreInfo } = headElement();
-  const actions = actionsPart();
+  const actions = actionsPart(card.acknowledge);
   el.append(head, actions.el);
   const texts = textParts(head);
   return {
     el,
-    update: (row) => {
+    update: (row, text) => {
       setIcon(icon, row.icon);
       const [first, second] = row.valueFirst ? [row.text, row.name] : [row.name, row.text];
       texts(first, second, row.fraction);
       moreInfo(row.moreInfo);
-      actions.update(row.id, row.actions);
+      actions.update(row, text);
     },
   };
 }
@@ -277,42 +294,43 @@ function embeddedPart(parent, next) {
 
 // Eget kort på Larm, Problem och Pågår: ikonen, namnet och orsaken över det inbäddade kortet,
 // och åtgärderna under. Ett tryck på huvudet öppnar detaljdialogen; det inbäddade kortet
-// hanterar sina egna tryck. embeddedFor ger det inbäddade kortet för en notis.
-function customNoticeElement(level, embeddedFor) {
+// hanterar sina egna tryck. card.embedded ger det inbäddade kortet för en notis.
+function customNoticeElement(level, card) {
   const el = document.createElement("ha-card");
   el.className = `notice ${level} custom`;
   const { head, icon, moreInfo } = headElement();
   const name = document.createElement("b");
   const reason = document.createElement("small");
   head.append(name, reason);
-  const actions = actionsPart();
+  const actions = actionsPart(card.acknowledge);
   el.append(head, actions.el);
   const embedded = embeddedPart(el, actions.el);
   return {
     el,
-    update: (row) => {
+    update: (row, text) => {
+      el.classList.toggle("acknowledged", row.acknowledged);
       setIcon(icon, row.icon);
       setText(name, row.name);
       setText(reason, row.text);
-      embedded(embeddedFor(row));
+      embedded(card.embedded(row));
       moreInfo(row.moreInfo);
-      actions.update(row.id, row.actions);
+      actions.update(row, text);
     },
   };
 }
 
 // Eget kort på Blick och Tyst: det inbäddade kortet som en rad, med åtgärderna under.
-function customRowElement(level, embeddedFor) {
+function customRowElement(level, card) {
   const el = document.createElement("div");
   el.className = `${level} custom`;
-  const actions = actionsPart();
+  const actions = actionsPart(card.acknowledge);
   el.append(actions.el);
   const embedded = embeddedPart(el, actions.el);
   return {
     el,
-    update: (row) => {
-      embedded(embeddedFor(row));
-      actions.update(row.id, row.actions);
+    update: (row, text) => {
+      embedded(card.embedded(row));
+      actions.update(row, text);
     },
   };
 }
@@ -334,7 +352,7 @@ const MORE = {
 };
 
 // Hur en notis byggs: som eget kort (notice) eller som rad (row), med ett inbäddat kort för
-// Eget kort och annars med text.
+// Eget kort och annars med text. Varje sätt får nivån och kortets embedded och acknowledge.
 const ELEMENTS = {
   notice: { custom: customNoticeElement, text: noticeElement },
   row: { custom: customRowElement, text: rowElement },
@@ -391,13 +409,13 @@ class AttentionSpanCard extends HTMLElement {
       );
     }
     const model = cardModel(this._hass, Date.now());
-    const calmText = strings(this._hass).calm;
+    const text = strings(this._hass);
     // De inbäddade korten visar egna entiteter och behöver varje ny hass.
     for (const { el } of this._cards.values()) el.hass = this._hass;
     // En nivå visar bara det första igen när resten har försvunnit.
     for (const level of this._showAll) if (model[level].length < 2) this._showAll.delete(level);
     // Inget att göra när det kortet visar är detsamma som förra gången.
-    const drawn = JSON.stringify([model, calmText, [...this._showAll]]);
+    const drawn = JSON.stringify([model, text, [...this._showAll]]);
     if (drawn === this._drawn) return;
     this._drawn = drawn;
     const levels = [...NEEDS_ATTENTION, "glance", "quiet"];
@@ -407,12 +425,15 @@ class AttentionSpanCard extends HTMLElement {
       const key = `${level} ${row.type} ${row.id}`;
       const notice =
         this._drawnNotices.get(key) ??
-        ELEMENTS[shape][row.type === "custom" ? "custom" : "text"](level, (r) => this._embedded(r));
-      notice.update(row);
+        ELEMENTS[shape][row.type === "custom" ? "custom" : "text"](level, {
+          embedded: (r) => this._embedded(r),
+          acknowledge: (entityId) => this._acknowledge(entityId),
+        });
+      notice.update(row, text);
       drawnNotices.set(key, notice);
       return notice.el;
     };
-    this._calm.update(calmText);
+    this._calm.update(text.calm);
     const rows = [
       ...(model.calm ? [this._calm.el] : []),
       ...["glance", "quiet"].flatMap((level) => model[level].map((row) => draw("row", row, level))),
@@ -450,6 +471,11 @@ class AttentionSpanCard extends HTMLElement {
         this._render();
       });
     }
+  }
+
+  // Kvittera Larmet för hela hushållet. Kortet ritas om när HA skickar Larmets nya tillstånd.
+  _acknowledge(entityId) {
+    this._hass.callService("attention_span", "acknowledge", {}, { entity_id: entityId });
   }
 
   // Det inbäddade kortet för ett Eget kort, återanvänt så länge konfigurationen är densamma.

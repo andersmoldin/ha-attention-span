@@ -1,15 +1,7 @@
 """Placeringen: var en regel står bland regler som kan hamna på samma nivå."""
 
-from homeassistant.config_entries import (
-    SIGNAL_CONFIG_ENTRY_CHANGED,
-    ConfigEntry,
-    ConfigEntryChange,
-    ConfigEntryState,
-)
-from homeassistant.const import EVENT_STATE_CHANGED, STATE_UNAVAILABLE
-from homeassistant.core import Event, HomeAssistant, callback
+from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResult, FlowResultType
-from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
 from .conftest import (
     ALWAYS_GLANCE,
@@ -23,6 +15,7 @@ from .conftest import (
     start_rule,
     start_rule_reconfigure,
     submit_reason_and_actions,
+    watch,
 )
 
 INNE = {"name": "Inne", "icon": "mdi:thermometer", "entity": "sensor.inne"}
@@ -42,28 +35,6 @@ def placement_options(result: FlowResult) -> list[tuple[str, str]]:
 def priorities(hass: HomeAssistant, *names: str) -> list[int]:
     states = [hass.states.get(f"sensor.attention_span_{name}") for name in names]
     return [state.attributes["priority"] for state in states]
-
-
-def watch(hass: HomeAssistant, entry: ConfigEntry) -> tuple[list[str], list[str]]:
-    """Följ entiteterna och posten: entiteter som blir otillgängliga eller försvinner, och
-    varje gång posten laddas ur."""
-    gone: list[str] = []
-    unloads: list[str] = []
-
-    @callback
-    def state_changed(event: Event) -> None:
-        new = event.data["new_state"]
-        if new is None or new.state == STATE_UNAVAILABLE:
-            gone.append(event.data["entity_id"])
-
-    @callback
-    def entry_changed(change: ConfigEntryChange, changed: ConfigEntry) -> None:
-        if changed.entry_id == entry.entry_id and changed.state is ConfigEntryState.NOT_LOADED:
-            unloads.append(changed.entry_id)
-
-    hass.bus.async_listen(EVENT_STATE_CHANGED, state_changed)
-    async_dispatcher_connect(hass, SIGNAL_CONFIG_ENTRY_CHANGED, entry_changed)
-    return gone, unloads
 
 
 async def test_the_placement_lists_first_and_the_rules_that_share_a_level(hass: HomeAssistant):
@@ -110,9 +81,7 @@ async def test_first_places_the_rule_before_the_rules_that_share_a_level(hass: H
 async def test_rules_without_a_shared_level_are_not_offered(hass: HomeAssistant):
     entry = await add_integration(hass)
     await add_rule(hass, entry, "value", ELPRIS, ALWAYS_QUIET)
-    bilen = await add_rule(
-        hass, entry, "value", BILEN, {"problem": "always", "glance": "always"}
-    )
+    bilen = await add_rule(hass, entry, "value", BILEN, {"problem": "always", "glance": "always"})
 
     result = await submit(hass, await start_rule(hass, entry, "value"), INNE)
     result = await submit(hass, result, level_modes({"problem": "always", "alarm": "always"}))

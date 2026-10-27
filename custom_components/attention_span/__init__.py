@@ -4,16 +4,18 @@ from __future__ import annotations
 
 from typing import Any
 
+from homeassistant.components.sensor import DOMAIN as SENSOR_DOMAIN
 from homeassistant.config_entries import ConfigEntry, UpdateListenerType
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryError
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import service
 from homeassistant.helpers.condition import ConditionChecker
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.typing import ConfigType
 
-from .const import CONF_PRIORITY, DOMAIN, SIGNAL_PRIORITY
+from .const import CONF_PRIORITY, DOMAIN, SERVICE_ACKNOWLEDGE, SIGNAL_PRIORITY
 from .frontend import async_register_card
 from .since import DATA_SINCE, SinceStore
 
@@ -28,6 +30,14 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     since = SinceStore(hass)
     await since.async_load()
     hass.data[DATA_SINCE] = since
+    service.async_register_platform_entity_service(
+        hass,
+        DOMAIN,
+        SERVICE_ACKNOWLEDGE,
+        entity_domain=SENSOR_DOMAIN,
+        schema=None,
+        func="async_acknowledge",
+    )
     return True
 
 
