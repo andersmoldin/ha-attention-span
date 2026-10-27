@@ -1,7 +1,15 @@
 """Placeringen: var en regel står bland regler som kan hamna på samma nivå."""
 
-from homeassistant.core import HomeAssistant
+from homeassistant.config_entries import (
+    SIGNAL_CONFIG_ENTRY_CHANGED,
+    ConfigEntry,
+    ConfigEntryChange,
+    ConfigEntryState,
+)
+from homeassistant.const import EVENT_STATE_CHANGED, STATE_UNAVAILABLE
+from homeassistant.core import Event, HomeAssistant, callback
 from homeassistant.data_entry_flow import FlowResult, FlowResultType
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
 from .conftest import (
     ALWAYS_GLANCE,
@@ -18,6 +26,7 @@ from .conftest import (
 )
 
 INNE = {"name": "Inne", "icon": "mdi:thermometer", "entity": "sensor.inne"}
+UTE = {"name": "Ute", "icon": "mdi:sun-thermometer", "entity": "sensor.ute"}
 
 
 async def submit(hass: HomeAssistant, result: FlowResult, user_input: dict) -> FlowResult:
@@ -33,6 +42,28 @@ def placement_options(result: FlowResult) -> list[tuple[str, str]]:
 def priorities(hass: HomeAssistant, *names: str) -> list[int]:
     states = [hass.states.get(f"sensor.attention_span_{name}") for name in names]
     return [state.attributes["priority"] for state in states]
+
+
+def watch(hass: HomeAssistant, entry: ConfigEntry) -> tuple[list[str], list[str]]:
+    """Följ entiteterna och posten: entiteter som blir otillgängliga eller försvinner, och
+    varje gång posten laddas ur."""
+    gone: list[str] = []
+    unloads: list[str] = []
+
+    @callback
+    def state_changed(event: Event) -> None:
+        new = event.data["new_state"]
+        if new is None or new.state == STATE_UNAVAILABLE:
+            gone.append(event.data["entity_id"])
+
+    @callback
+    def entry_changed(change: ConfigEntryChange, changed: ConfigEntry) -> None:
+        if changed.entry_id == entry.entry_id and changed.state is ConfigEntryState.NOT_LOADED:
+            unloads.append(changed.entry_id)
+
+    hass.bus.async_listen(EVENT_STATE_CHANGED, state_changed)
+    async_dispatcher_connect(hass, SIGNAL_CONFIG_ENTRY_CHANGED, entry_changed)
+    return gone, unloads
 
 
 async def test_the_placement_lists_first_and_the_rules_that_share_a_level(hass: HomeAssistant):
@@ -193,3 +224,37 @@ async def test_keeping_the_suggested_placement_changes_no_rule_between_other_lev
     await reconfigure_rule(hass, entry, inne, INNE, ALWAYS_GLANCE)
 
     assert priorities(hass, "bilen", "elpris", "inne") == [1, 2, 3]
+
+
+async def test_moving_the_last_rule_first_updates_the_order_without_reloading(
+    hass: HomeAssistant,
+):
+    entry = await add_integration(hass)
+    await add_rule(hass, entry, "value", BILEN, ALWAYS_GLANCE)
+    await add_rule(hass, entry, "value", ELPRIS, ALWAYS_GLANCE)
+    await add_rule(hass, entry, "value", INNE, ALWAYS_GLANCE)
+    ute = await add_rule(hass, entry, "value", UTE, ALWAYS_GLANCE)
+    gone, unloads = watch(hass, entry)
+
+    await reconfigure_rule(hass, entry, ute, UTE, ALWAYS_GLANCE, placement="first")
+
+    assert priorities(hass, "ute", "bilen", "elpris", "inne") == [1, 2, 3, 4]
+    assert gone == []
+    assert unloads == []
+    assert hass.states.get("sensor.attention_span_ute").state == "glance"
+
+
+async def test_moving_and_changing_a_rule_reloads_once(hass: HomeAssistant):
+    entry = await add_integration(hass)
+    await add_rule(hass, entry, "value", BILEN, ALWAYS_GLANCE)
+    await add_rule(hass, entry, "value", ELPRIS, ALWAYS_GLANCE)
+    await add_rule(hass, entry, "value", INNE, ALWAYS_GLANCE)
+    ute = await add_rule(hass, entry, "value", UTE, ALWAYS_GLANCE)
+    _, unloads = watch(hass, entry)
+
+    changed = {**UTE, "icon": "mdi:weather-sunny"}
+    await reconfigure_rule(hass, entry, ute, changed, ALWAYS_GLANCE, placement="first")
+
+    assert priorities(hass, "ute", "bilen", "elpris", "inne") == [1, 2, 3, 4]
+    assert hass.states.get("sensor.attention_span_ute").attributes["icon"] == "mdi:weather-sunny"
+    assert len(unloads) == 1

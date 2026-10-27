@@ -9,6 +9,7 @@ from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
 from homeassistant.config_entries import ConfigEntry, ConfigSubentry
 from homeassistant.const import ATTR_RESTORED
 from homeassistant.core import Event, EventStateChangedData, HomeAssistant, callback
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.restore_state import ExtraStoredData, RestoredExtraData, RestoreEntity
@@ -32,6 +33,7 @@ from .const import (
     DOMAIN,
     HIDDEN,
     LEVELS,
+    SIGNAL_PRIORITY,
     SOURCE_RULE,
     SUBENTRY_RULE,
     TYPE_CUSTOM,
@@ -118,6 +120,11 @@ class RuleSensor(SensorEntity, RestoreEntity):
         if stored.get("rule") == self.unique_id:
             self._attr_native_value = stored["level"]
             self._attr_extra_state_attributes["since"] = stored["since"]
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass, SIGNAL_PRIORITY.format(self._rule_id), self._async_priority_changed
+            )
+        )
         # Under en omstart finns entiteterna i villkoren först när deras integrationer har
         # laddats, så nivån räknas ut när HA har startat.
         self.async_on_remove(async_at_started(self.hass, self._async_start))
@@ -148,6 +155,13 @@ class RuleSensor(SensorEntity, RestoreEntity):
         # Sist, så att orsaken renderas med det som Status och Kommande redan vet.
         if self._reason is not None:
             self.async_on_remove(self._reason.async_start())
+
+    @callback
+    def _async_priority_changed(self, priority: int) -> None:
+        if priority == self._attr_extra_state_attributes["priority"]:
+            return
+        self._attr_extra_state_attributes["priority"] = priority
+        self.async_write_ha_state()
 
     @callback
     def _async_reason_changed(self, reason: str | None) -> None:
