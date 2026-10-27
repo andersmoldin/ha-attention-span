@@ -152,6 +152,7 @@ Attributnamnen är ett versionerat, dokumenterat kontrakt så att tredjepartskor
 | `snoozed` | Om notisen ligger åt sidan |
 | `snoozed_until` | Till när; `null` med `snoozed: true` betyder «tills det är lagat» |
 | `occurrences` | De närmaste tillfällena, först det tidigaste, bara för typen `upcoming`. Varje tillfälle har `start`, `end` och `summary`; heldag anges som datum, och för en sensor med tidpunkter är `end` och `summary` `null` |
+| `state_since` | När den visade entiteten fick sitt tillstånd, också över en omstart av Home Assistant, bara för typen `status`; `null` innan Home Assistant har startat, när entiteten saknas och medan den väntar på att dess integration ska laddas |
 | `card` | Kortkonfigurationen, bara för typen `custom` |
 | `integrations` | Trasiga integrationer, bara på `sensor.attention_span_integrations` |
 
