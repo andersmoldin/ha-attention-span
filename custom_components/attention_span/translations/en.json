@@ -263,11 +263,31 @@
     "acknowledge": {
       "name": "Acknowledge",
       "description": "Acknowledges an Alarm for the whole household. The Alarm stays in compact form until its condition has let go or the time to alarm again has passed."
+    },
+    "snooze": {
+      "name": "Snooze",
+      "description": "Snoozes a Problem or Ongoing notice for the whole household. It comes back when the time has passed, at a new occurrence or when its level gets more severe.",
+      "fields": {
+        "until": {
+          "name": "Until",
+          "description": "When the notice comes back. Leave empty to snooze it until it is fixed."
+        }
+      }
+    },
+    "unsnooze": {
+      "name": "Unsnooze",
+      "description": "Brings back a snoozed notice for the whole household."
     }
   },
   "exceptions": {
     "not_alarm": {
       "message": "{entity_id} is not an Alarm. Only Alarms can be acknowledged."
+    },
+    "not_snoozable": {
+      "message": "{entity_id} is not a Problem or Ongoing. Only Problems and Ongoing notices can be snoozed."
+    },
+    "until_passed": {
+      "message": "{until} has already passed. Choose a later time to snooze {entity_id} until."
     }
   }
 }

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from typing import Any
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
@@ -36,6 +37,7 @@ from .const import (
     HIDDEN,
     LEVELS,
     SIGNAL_PRIORITY,
+    SNOOZABLE,
     SOURCE_RULE,
     SUBENTRY_RULE,
     TYPE_CUSTOM,
@@ -43,7 +45,7 @@ from .const import (
     TYPE_UPCOMING,
 )
 from .evaluation import RuleLevel
-from .lifecycle import Acknowledgement
+from .lifecycle import Acknowledgement, Snooze
 from .reason import REASON_NONE, Reason, async_variables, parse_since, reason_source
 from .since import DATA_SINCE, SavedRule, SavedState
 from .upcoming import Occurrence, Upcoming
@@ -88,6 +90,8 @@ class RuleSensor(SensorEntity, RestoreEntity):
             "since": dt_util.utcnow().isoformat(),
             "acknowledged": False,
             "realarm_at": None,
+            "snoozed": False,
+            "snoozed_until": None,
         }
         if data[CONF_TYPE] == TYPE_STATUS:
             # När den visade entiteten fick sitt tillstånd, för «hur länge». Entitetens
@@ -105,9 +109,13 @@ class RuleSensor(SensorEntity, RestoreEntity):
         saved = self._store.get(self._rule_id)
         self._shown = saved.get("state")
         self._acknowledgement = Acknowledgement(
-            self.hass, self._rule, saved.get("acknowledgement"), self._async_acknowledgement_changed
+            self.hass, self._rule, saved.get("acknowledgement"), self._async_lifecycle_changed
         )
         self.async_on_remove(self._acknowledgement.async_unload)
+        self._snooze = Snooze(
+            self.hass, self._rule, saved.get("snooze"), self._async_lifecycle_changed
+        )
+        self.async_on_remove(self._snooze.async_unload)
         # Går ett villkor inte att bygga, till exempel för att dess enhet har tagits bort,
         # loggar HA felet och visar regeln som otillgänglig.
         evaluation = await RuleLevel.async_create(
@@ -129,7 +137,7 @@ class RuleSensor(SensorEntity, RestoreEntity):
         if stored.get("rule") == self.unique_id:
             self._attr_native_value = stored["level"]
             self._attr_extra_state_attributes["since"] = stored["since"]
-        self._show_acknowledgement()
+        self._show_lifecycle()
         self.async_on_remove(
             async_dispatcher_connect(
                 self.hass, SIGNAL_PRIORITY.format(self._rule_id), self._async_priority_changed
@@ -234,33 +242,39 @@ class RuleSensor(SensorEntity, RestoreEntity):
             saved["state"] = self._shown
         if (acknowledgement := self._acknowledgement.saved) is not None:
             saved["acknowledgement"] = acknowledgement
+        if (snooze := self._snooze.saved) is not None:
+            saved["snooze"] = snooze
         self._store.async_set(self._rule_id, saved)
 
     @callback
     def _async_reevaluate(self) -> None:
         level = self._evaluation.evaluate()
         self._acknowledgement.async_level(level)
+        self._snooze.async_level(level)
         self._async_save()
         changed = level != self._attr_native_value
         if changed:
             self._attr_native_value = level
             self._attr_extra_state_attributes["since"] = dt_util.utcnow().isoformat()
-        if self._show_acknowledgement() or changed:
+        if self._show_lifecycle() or changed:
             self.async_write_ha_state()
 
     @callback
-    def _async_acknowledgement_changed(self) -> None:
-        """Larmet har kvitterats, eller kvitteringen har gått ut medan nivån stod still."""
+    def _async_lifecycle_changed(self) -> None:
+        """Larmet har kvitterats eller notisen lagts åt sidan eller tagits fram, eller så har
+        kvitteringen eller åt sidan gått ut medan nivån stod still."""
         self._async_save()
-        if self._show_acknowledgement():
+        if self._show_lifecycle():
             self.async_write_ha_state()
 
-    def _show_acknowledgement(self) -> bool:
-        """Sätt attributen för kvitteringen på nuvarande nivå, och säg om de ändrades."""
-        acknowledgement = self._acknowledgement.attributes(self._attr_native_value)
-        if acknowledgement.items() <= self._attr_extra_state_attributes.items():
+    def _show_lifecycle(self) -> bool:
+        """Sätt attributen för kvitteringen och åt sidan på nuvarande nivå, och säg om de
+        ändrades."""
+        level = self._attr_native_value
+        lifecycle = self._acknowledgement.attributes(level) | self._snooze.attributes(level)
+        if lifecycle.items() <= self._attr_extra_state_attributes.items():
             return False
-        self._attr_extra_state_attributes.update(acknowledgement)
+        self._attr_extra_state_attributes.update(lifecycle)
         return True
 
     async def async_acknowledge(self) -> None:
@@ -272,7 +286,36 @@ class RuleSensor(SensorEntity, RestoreEntity):
                 translation_placeholders={"entity_id": self.entity_id},
             )
         self._acknowledgement.async_acknowledge()
-        self._async_acknowledgement_changed()
+        self._async_lifecycle_changed()
+
+    async def async_snooze(self, until: datetime | None = None) -> None:
+        """Tjänsten snooze: lägg Problemet eller Pågår-notisen åt sidan för hela hushållet, till
+        until eller, utan until, tills det är lagat. En tid utan tidszon gäller hemmets."""
+        level = self._attr_native_value
+        if not isinstance(level, str) or level not in SNOOZABLE:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="not_snoozable",
+                translation_placeholders={"entity_id": self.entity_id},
+            )
+        if until is not None:
+            until = dt_util.as_utc(until)
+            if until <= dt_util.utcnow():
+                raise ServiceValidationError(
+                    translation_domain=DOMAIN,
+                    translation_key="until_passed",
+                    translation_placeholders={
+                        "until": until.isoformat(),
+                        "entity_id": self.entity_id,
+                    },
+                )
+        self._snooze.async_snooze(level, until)
+        self._async_lifecycle_changed()
+
+    async def async_unsnooze(self) -> None:
+        """Tjänsten unsnooze: ta fram notisen igen för hela hushållet."""
+        self._snooze.async_release()
+        self._async_lifecycle_changed()
 
     @property
     def extra_restore_state_data(self) -> ExtraStoredData:

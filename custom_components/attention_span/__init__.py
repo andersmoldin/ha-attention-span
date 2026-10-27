@@ -15,8 +15,17 @@ from homeassistant.helpers.condition import ConditionChecker
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.typing import ConfigType
 
-from .const import CONF_PRIORITY, DOMAIN, SERVICE_ACKNOWLEDGE, SIGNAL_PRIORITY
+from .const import (
+    ATTR_UNTIL,
+    CONF_PRIORITY,
+    DOMAIN,
+    SERVICE_ACKNOWLEDGE,
+    SERVICE_SNOOZE,
+    SERVICE_UNSNOOZE,
+    SIGNAL_PRIORITY,
+)
 from .frontend import async_register_card
+from .schema import vol
 from .since import DATA_SINCE, SinceStore
 
 PLATFORMS = [Platform.SENSOR]
@@ -37,6 +46,22 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         entity_domain=SENSOR_DOMAIN,
         schema=None,
         func="async_acknowledge",
+    )
+    service.async_register_platform_entity_service(
+        hass,
+        DOMAIN,
+        SERVICE_SNOOZE,
+        entity_domain=SENSOR_DOMAIN,
+        schema={vol.Optional(ATTR_UNTIL): cv.datetime},
+        func="async_snooze",
+    )
+    service.async_register_platform_entity_service(
+        hass,
+        DOMAIN,
+        SERVICE_UNSNOOZE,
+        entity_domain=SENSOR_DOMAIN,
+        schema=None,
+        func="async_unsnooze",
     )
     return True
 

@@ -127,11 +127,19 @@ async def _shown_keys(hass: HomeAssistant) -> set[str]:
         result["flow_id"], {"actions": []}
     )
     keys |= _form_keys(rule, result) | {f"{rule}.error.realarm_positive"}
-    # Tjänsten och dess fel.
+    # Tjänsterna och deras fel.
     keys |= {
         "services.acknowledge.name",
         "services.acknowledge.description",
         "exceptions.not_alarm.message",
+        "services.snooze.name",
+        "services.snooze.description",
+        "services.snooze.fields.until.name",
+        "services.snooze.fields.until.description",
+        "services.unsnooze.name",
+        "services.unsnooze.description",
+        "exceptions.not_snoozable.message",
+        "exceptions.until_passed.message",
     }
     # Orden i de färdiga mallarna för orsaken.
     keys |= {

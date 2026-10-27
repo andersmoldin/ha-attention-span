@@ -232,8 +232,8 @@ test("Larm, Problem och Pågår ritas som egna kort i den ordningen, över Blick
     parts.map((el) => [el.className, text(el)]),
     [
       ["notice alarm", "Findus Otillgänglig i 3 timKvittera"],
-      ["notice problem", "Ytterdörren Öppen i 10 min"],
-      ["notice ongoing", "Tvätten Kör i 25 min"],
+      ["notice problem", "Ytterdörren Öppen i 10 minLägg åt sidan"],
+      ["notice ongoing", "Tvätten Kör i 25 minLägg åt sidan"],
       ["glance", "52 % Bilen"],
     ],
   );
@@ -247,7 +247,7 @@ test("varje notis på Pågår får ett eget kort", () => {
     fakeHass({ notices: [held("status_ongoing", 25), dorren], values: [DORREN, TVATTEN] }),
   );
 
-  assert.deepEqual([...root.querySelectorAll(".notice.ongoing")].map(text), [
+  assert.deepEqual([...root.querySelectorAll(".notice.ongoing .head")].map(text), [
     "Ytterdörren Öppen i 10 min",
     "Tvätten Kör i 25 min",
   ]);
@@ -298,7 +298,7 @@ test("hur länge räknas i minuter, timmar eller dagar", () => {
       }),
     );
 
-    assert.equal(text(root.querySelector(".notice")), `Ytterdörren Öppen i ${shown}`);
+    assert.equal(text(root.querySelector(".notice .head")), `Ytterdörren Öppen i ${shown}`);
   }
 });
 
@@ -311,7 +311,7 @@ test("Status räknar hur länge från när regeln såg tillståndet börja, ocks
     }),
   );
 
-  assert.equal(text(root.querySelector(".notice")), "Ytterdörren Öppen i 3 tim");
+  assert.equal(text(root.querySelector(".notice .head")), "Ytterdörren Öppen i 3 tim");
 });
 
 test("Status följer användarens språk", () => {
@@ -323,7 +323,7 @@ test("Status följer användarens språk", () => {
     }),
   );
 
-  assert.equal(text(root.querySelector(".notice")), "Ytterdörren Open for 10 min");
+  assert.equal(text(root.querySelector(".notice .head")), "Ytterdörren Open for 10 min");
 });
 
 test("en notis av typen Värde på Problem visar namnet och värdet", () => {
@@ -331,7 +331,7 @@ test("en notis av typen Värde på Problem visar namnet och värdet", () => {
     fakeHass({ notices: [notice("value_glance", { state: "problem" })], values: [BILEN] }),
   );
 
-  assert.equal(text(root.querySelector(".notice.problem")), "Bilen 52 %");
+  assert.equal(text(root.querySelector(".notice.problem .head")), "Bilen 52 %");
 });
 
 test("hur länge räknas upp medan kortet visas, utan att något annat ändras", (t) => {
@@ -345,11 +345,11 @@ test("hur länge räknas upp medan kortet visas, utan att något annat ändras",
       values: [status("binary_sensor.ytterdorr", "Öppen", 10)],
     }),
   );
-  assert.equal(text(root.querySelector(".notice")), "Ytterdörren Öppen i 10 min");
+  assert.equal(text(root.querySelector(".notice .head")), "Ytterdörren Öppen i 10 min");
 
   t.mock.timers.tick(60_000);
 
-  assert.equal(text(root.querySelector(".notice")), "Ytterdörren Öppen i 11 min");
+  assert.equal(text(root.querySelector(".notice .head")), "Ytterdörren Öppen i 11 min");
 });
 
 const NOW = Date.parse("2026-10-26T08:00:00Z");
@@ -376,7 +376,7 @@ test("Förlopp med en sluttid visar tid kvar och en stapel från när notisen fi
   const root = renderCard(fakeHass({ notices: [DISKEN], values: [klar] }));
 
   const card = root.querySelector(".notice.ongoing");
-  assert.equal(text(card), "Diskmaskinen 40 min kvar");
+  assert.equal(text(card.querySelector(".head")), "Diskmaskinen 40 min kvar");
   assert.equal(Math.round(bar(card)), 33);
 });
 
@@ -412,7 +412,7 @@ test("Förlopp med en timer visar tid kvar, även när timern är pausad", (t) =
     );
 
     const card = root.querySelector(".notice.problem");
-    assert.equal(text(card), `Diskmaskinen ${shown}`, timer.state);
+    assert.equal(text(card.querySelector(".head")), `Diskmaskinen ${shown}`, timer.state);
     assert.equal(bar(card), done, timer.state);
   }
 });
@@ -427,7 +427,7 @@ test("Förlopp utan tid kvar eller procent visar tillståndet utan stapel", () =
   );
 
   const card = root.querySelector(".notice.ongoing");
-  assert.equal(text(card), "Diskmaskinen idle");
+  assert.equal(text(card.querySelector(".head")), "Diskmaskinen idle");
   assert.equal(bar(card), null);
 });
 
@@ -454,7 +454,7 @@ test("Kommande säger nu, om en stund, i dag eller datum beroende på hur nära 
   );
 
   assert.equal(
-    text(root.querySelector(".notice.ongoing")),
+    text(root.querySelector(".notice.ongoing .head")),
     "Sophämtning nu · om 7 min · i dag 14:00 · i dag · 3 nov. 06:30",
   );
 });
@@ -526,7 +526,7 @@ test("Status för en grupp visar hur många av medlemmarna som har gruppens till
     fakeHass({ notices: [notice("status_group_ongoing")], values: WINDOWS, groups: [fonster()] }),
   );
 
-  assert.equal(text(root.querySelector(".notice.ongoing")), "Fönster Öppen · 3 av 5");
+  assert.equal(text(root.querySelector(".notice.ongoing .head")), "Fönster Öppen · 3 av 5");
 });
 
 test("Status för en grupp på Tyst och på engelska", () => {
@@ -551,7 +551,7 @@ test("en gammal grupp i domänen group räknas också", () => {
     }),
   );
 
-  assert.equal(text(root.querySelector(".notice")), "Fönster Stängd · 2 av 5");
+  assert.equal(text(root.querySelector(".notice .head")), "Fönster Stängd · 2 av 5");
 });
 
 test("en entitet med listan entity_id som inte är en grupp visar tillståndet och hur länge", () => {
@@ -563,7 +563,7 @@ test("en entitet med listan entity_id som inte är en grupp visar tillståndet o
     }),
   );
 
-  assert.equal(text(root.querySelector(".notice")), "Fönster Aktiverad i 10 min");
+  assert.equal(text(root.querySelector(".notice .head")), "Fönster Aktiverad i 10 min");
 });
 
 test("tryck eller Enter på Status för en grupp öppnar HA:s detaljdialog för gruppen", () => {
@@ -620,7 +620,7 @@ test("Förlopp med en sensor för tid kvar visar tid kvar och en stapel från n�
     const root = renderCard(fakeHass({ notices: [DISKEN], values: [kvar] }));
 
     const card = root.querySelector(".notice.ongoing");
-    assert.equal(text(card), `Diskmaskinen ${left} kvar`, unit);
+    assert.equal(text(card.querySelector(".head")), `Diskmaskinen ${left} kvar`, unit);
     assert.equal(Math.round(bar(card)), done, unit);
   }
 });
@@ -639,7 +639,7 @@ test("en entitet med gruppmedlemmar i group_entities räknas som en grupp", () =
     }),
   );
 
-  assert.equal(text(root.querySelector(".notice")), "Fönster on · 2 av 3");
+  assert.equal(text(root.querySelector(".notice .head")), "Fönster on · 2 av 3");
 });
 
 // Samma element i samma ordning.
@@ -698,7 +698,7 @@ test("ett ändrat värde och en ny notis byter bara det som ändrats, inte ikone
     values: [bilen, ELPRIS, DORREN],
   });
 
-  assert.equal(text(root.querySelector(".notice.problem")), "Ytterdörren Öppen i 10 min");
+  assert.equal(text(root.querySelector(".notice.problem .head")), "Ytterdörren Öppen i 10 min");
   const rows = [...root.querySelectorAll(".glance ha-icon, .quiet ha-icon")];
   assert.ok(same(drawn, rows), "ikonerna skapades om");
   assert.equal(icons.loaded, loaded + 1);
@@ -711,7 +711,7 @@ test("en notis som byter nivå ritas bara på sin nya nivå", () => {
 
   const problem = notice("value_glance", { state: "problem" });
   root.host.hass = fakeHass({ notices: [problem], values: [BILEN] });
-  assert.deepEqual(shown(), ["Bilen 52 %"]);
+  assert.deepEqual(shown(), ["Bilen 52 %Lägg åt sidan"]);
 
   root.host.hass = hass;
   assert.deepEqual(shown(), ["Allt är lugnt hemma.", "52 % Bilen"]);
@@ -767,7 +767,7 @@ test("en notis med en orsak visar orsaken under namnet i stället för det Typen
     }),
   );
 
-  assert.equal(text(root.querySelector(".notice.problem")), "Ytterdörren Öppen sedan 20:02");
+  assert.equal(text(root.querySelector(".notice.problem .head")), "Ytterdörren Öppen sedan 20:02");
   assert.deepEqual([...root.querySelectorAll(".glance, .quiet")].map(text), [
     "Bilen Laddar, 52 av 80 %",
     "42 öre/kWh Elpris",
@@ -780,7 +780,7 @@ test("Förlopp med en orsak behåller sin stapel", () => {
   const root = renderCard(fakeHass({ notices: [disken], values: [procent] }));
 
   const card = root.querySelector(".notice");
-  assert.equal(text(card), "Diskmaskinen Torkar");
+  assert.equal(text(card.querySelector(".head")), "Diskmaskinen Torkar");
   assert.equal(bar(card), 62);
 });
 
@@ -791,9 +791,9 @@ test("åtgärderna blir knappar, och ett tryck ber HA anropa tjänsten och fråg
   const dialogs = opened(root);
 
   const buttons = [...root.querySelectorAll(".notice button")];
-  assert.deepEqual(buttons.map(text), ["Starta om", "Docka"]);
-  buttons[0].click();
+  assert.deepEqual(buttons.map(text), ["Lägg åt sidan", "Starta om", "Docka"]);
   buttons[1].click();
+  buttons[2].click();
 
   assert.deepEqual(actions, [
     {
@@ -852,7 +852,10 @@ test("åtgärder som inte är ett tjänsteanrop ritas inte", () => {
   const findus = held("status_problem", 10, { attributes: { actions: broken } });
   const root = renderCard(fakeHass({ notices: [findus], values: [DORREN] }));
 
-  assert.deepEqual([...root.querySelectorAll(".notice button")].map(text), ["Docka"]);
+  assert.deepEqual([...root.querySelectorAll(".notice button")].map(text), [
+    "Lägg åt sidan",
+    "Docka",
+  ]);
 });
 
 test("tryck eller Enter på en notis öppnar HA:s detaljdialog för entiteten den visar", async () => {
@@ -896,17 +899,21 @@ test("en ny hass skapar inte knapparna igen, men ändrade åtgärder byter dem",
   const findus = held("status_problem", 10, { attributes: { actions: [RESTART] } });
   const hass = fakeHass({ notices: [findus], values: [DORREN] });
   const root = renderCard(hass);
-  const [button] = root.querySelectorAll(".notice button");
+  const [, button] = root.querySelectorAll(".notice button");
 
   const kok = { entity_id: "light.kok", state: "on", attributes: {} };
   root.host.hass = { ...hass, states: { ...hass.states, [kok.entity_id]: kok } };
   const moved = held("status_problem", 11, { attributes: { actions: [RESTART] } });
   root.host.hass = fakeHass({ notices: [moved], values: [DORREN] });
-  assert.ok(root.querySelector(".notice button") === button, "knappen skapades om");
+  assert.ok(root.querySelectorAll(".notice button")[1] === button, "knappen skapades om");
 
   const changed = held("status_problem", 11, { attributes: { actions: [DOCK, RESTART] } });
   root.host.hass = fakeHass({ notices: [changed], values: [DORREN] });
-  assert.deepEqual([...root.querySelectorAll(".notice button")].map(text), ["Docka", "Starta om"]);
+  assert.deepEqual([...root.querySelectorAll(".notice button")].map(text), [
+    "Lägg åt sidan",
+    "Docka",
+    "Starta om",
+  ]);
 });
 
 test("en notis med orsak och en åtgärd med bekräftelse ritas som i det delade exemplet", () => {
@@ -917,7 +924,7 @@ test("en notis med orsak och en åtgärd med bekräftelse ritas som i det delade
   const actions = performed(root);
 
   assert.equal(text(root.querySelector(".notice.problem .head")), "Frysen Dörren står öppen");
-  const [button] = root.querySelectorAll(".notice.problem button");
+  const [, button] = root.querySelectorAll(".notice.problem button");
   assert.equal(text(button), "Tysta larmet");
   button.click();
   assert.deepEqual(actions[0].config.tap_action, {
@@ -1117,6 +1124,7 @@ test("Kvittera står före Larmets egna åtgärder, och bara på Larm", () => {
     "Docka",
   ]);
   assert.deepEqual([...root.querySelectorAll(".notice.problem button")].map(text), [
+    "Lägg åt sidan",
     "Starta om",
   ]);
 });
