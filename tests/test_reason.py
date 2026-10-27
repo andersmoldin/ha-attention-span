@@ -3,9 +3,13 @@
 from datetime import timedelta
 
 import pytest
+from homeassistant.const import EVENT_STATE_CHANGED
 from homeassistant.core import HomeAssistant
 from homeassistant.setup import async_setup_component
-from pytest_homeassistant_custom_component.common import async_fire_time_changed
+from pytest_homeassistant_custom_component.common import (
+    async_capture_events,
+    async_fire_time_changed,
+)
 
 from custom_components.attention_span.const import DOMAIN
 
@@ -20,6 +24,7 @@ async def swedish(hass: HomeAssistant) -> None:
     """Ett hem på svenska, med HA:s egna översättningar av tillstånden laddade."""
     hass.config.language = "sv"
     assert await async_setup_component(hass, "binary_sensor", {})
+    assert await async_setup_component(hass, "timer", {})
 
 
 def reason(hass: HomeAssistant, entity_id: str) -> str | None:
@@ -155,6 +160,10 @@ async def test_a_reason_that_renders_empty_or_fails_is_none(hass: HomeAssistant)
         ),
         ("timer.agg", "paused", {"duration": "0:08:00", "remaining": "0:03:00"}, "3 min kvar"),
         ("sensor.skrivare", "62", {"unit_of_measurement": "%"}, "62 %"),
+        # Utan tid kvar eller ett tal visas tillståndet på hemmets språk, utan enhet.
+        ("timer.agg", "idle", {"duration": "0:08:00"}, "Inaktiv"),
+        ("sensor.skrivare", "unavailable", {"unit_of_measurement": "%"}, "Ej tillgänglig"),
+        ("sensor.skrivare", "unknown", {"unit_of_measurement": "%"}, "Okänd"),
     ],
 )
 async def test_the_preset_for_progress_shows_the_time_left_or_the_percent(
@@ -196,6 +205,98 @@ async def test_the_preset_for_value_shows_the_number_with_its_unit(hass: HomeAss
     )
 
     assert reason(hass, "sensor.attention_span_bilen") == "52 %"
+
+
+@pytest.mark.parametrize(
+    ("state", "expected"), [("unavailable", "Ej tillgänglig"), ("unknown", "Okänd")]
+)
+async def test_the_preset_for_value_shows_a_missing_value_in_the_household_language(
+    hass: HomeAssistant, swedish, state: str, expected: str
+):
+    hass.states.async_set("sensor.bilen", state, {"unit_of_measurement": "%"})
+    entry = await add_integration(hass)
+
+    await add_rule(
+        hass,
+        entry,
+        "value",
+        {"name": "Bilen", "entity": "sensor.bilen"},
+        ALWAYS_ONGOING,
+        reason={"reason": "value"},
+    )
+
+    assert reason(hass, "sensor.attention_span_bilen") == expected
+
+
+async def test_the_preset_for_status_shows_an_unavailable_state_in_the_household_language(
+    hass: HomeAssistant, freezer, swedish
+):
+    freezer.move_to(FIXTURE_TIME)
+    hass.states.async_set("binary_sensor.ytterdorr", "unavailable", {"device_class": "door"})
+    entry = await add_integration(hass)
+    freezer.tick(timedelta(minutes=10))
+
+    await add_rule(
+        hass, entry, "status", YTTERDORREN, ALWAYS_ONGOING, reason={"reason": "state_for"}
+    )
+
+    assert reason(hass, "sensor.attention_span_ytterdorren") == "Ej tillgänglig i 10 min"
+
+
+async def test_a_new_state_is_written_once_with_its_reason_and_state_since(
+    hass: HomeAssistant, freezer, swedish
+):
+    freezer.move_to(FIXTURE_TIME)
+    hass.states.async_set("binary_sensor.ytterdorr", "on", {"device_class": "door"})
+    entry = await add_integration(hass)
+    await add_rule(
+        hass, entry, "status", YTTERDORREN, ALWAYS_ONGOING, reason={"reason": "state_for"}
+    )
+    freezer.tick(timedelta(minutes=10))
+    events = async_capture_events(hass, EVENT_STATE_CHANGED)
+
+    hass.states.async_set("binary_sensor.ytterdorr", "off", {"device_class": "door"})
+    await hass.async_block_till_done()
+
+    written = [e for e in events if e.data["entity_id"] == "sensor.attention_span_ytterdorren"]
+    assert len(written) == 1
+    attributes = written[0].data["new_state"].attributes
+    assert attributes["reason"] == "Stängd i 0 min"
+    assert attributes["state_since"] == "2026-10-26T08:10:00+00:00"
+
+
+async def test_new_occurrences_are_written_once_with_their_reason(
+    hass: HomeAssistant, freezer, swedish
+):
+    await hass.config.async_set_time_zone("Europe/Stockholm")
+    freezer.move_to(FIXTURE_TIME)
+    hass.states.async_set(
+        "sensor.buss_nasta", "2026-10-26T08:19:00+00:00", {"device_class": "timestamp"}
+    )
+    entry = await add_integration(hass)
+    await add_rule(
+        hass,
+        entry,
+        "upcoming",
+        {"name": "Buss", "entities": ["sensor.buss_nasta"], "count": 3},
+        ALWAYS_ONGOING,
+        reason={"reason": "next"},
+    )
+    await hass.async_block_till_done()
+    events = async_capture_events(hass, EVENT_STATE_CHANGED)
+
+    hass.states.async_set(
+        "sensor.buss_nasta", "2026-10-26T08:27:00+00:00", {"device_class": "timestamp"}
+    )
+    freezer.tick(timedelta(seconds=1))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+
+    written = [e for e in events if e.data["entity_id"] == "sensor.attention_span_buss"]
+    assert len(written) == 1
+    attributes = written[0].data["new_state"].attributes
+    assert attributes["reason"] == "Nästa: 09:27"
+    assert [o["start"] for o in attributes["occurrences"]] == ["2026-10-26T09:27:00+01:00"]
 
 
 async def test_the_preset_for_upcoming_shows_the_next_occurrence(

@@ -157,13 +157,24 @@ class RuleSensor(SensorEntity, RestoreEntity):
         self.async_write_ha_state()
 
     @callback
-    def _async_occurrences(self, occurrences: list[Occurrence]) -> None:
-        if occurrences == self._attr_extra_state_attributes["occurrences"]:
+    def _async_update(self, attribute: str, value: Any, variable: Any) -> None:
+        """Ändra ett attribut som orsaken också läser, och skriv tillståndet en gång.
+
+        Orsaken renderas om först, så att tillståndet får den nya orsaken i samma skrivning.
+        Ändras orsaken skriver _async_reason_changed tillståndet.
+        """
+        if value == self._attr_extra_state_attributes[attribute]:
             return
-        self._attr_extra_state_attributes["occurrences"] = occurrences
-        self.async_write_ha_state()
+        self._attr_extra_state_attributes[attribute] = value
+        reason = self._attr_extra_state_attributes["reason"]
         if self._reason is not None:
-            self._reason.async_set(occurrences=occurrences)
+            self._reason.async_set(**{attribute: variable})
+        if reason == self._attr_extra_state_attributes["reason"]:
+            self.async_write_ha_state()
+
+    @callback
+    def _async_occurrences(self, occurrences: list[Occurrence]) -> None:
+        self._async_update("occurrences", occurrences, occurrences)
 
     @callback
     def _async_shown_changed(self, _: Event[EventStateChangedData] | None = None) -> None:
@@ -189,11 +200,7 @@ class RuleSensor(SensorEntity, RestoreEntity):
                 )
                 since = self._shown["since"]
         self._async_save()
-        if self._reason is not None:
-            self._reason.async_set(state_since=parse_since(since))
-        if since != self._attr_extra_state_attributes["state_since"]:
-            self._attr_extra_state_attributes["state_since"] = since
-            self.async_write_ha_state()
+        self._async_update("state_since", since, parse_since(since))
 
     @callback
     def _async_save(self) -> None:

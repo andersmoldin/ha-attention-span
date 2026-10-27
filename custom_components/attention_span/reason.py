@@ -55,17 +55,26 @@ _DURATION = (
     "{%- endmacro -%}"
 )
 
+# Tillståndet på hemmets språk. HA översätter inte unavailable och unknown, så de orden
+# kommer ur variabeln words, som kortet visar dem.
+_STATE = (
+    "{%- macro shown_state(entity) -%}"
+    "{%- set raw = states(entity) -%}"
+    "{{ words[raw] if raw in ('unavailable', 'unknown') else state_translated(entity) }}"
+    "{%- endmacro -%}"
+)
+
 # Status: tillståndet och hur länge det har gällt, «Öppen i 10 min».
-_STATE_FOR = _DURATION + (
+_STATE_FOR = _DURATION + _STATE + (
     "{%- if entity and state_since -%}"
-    "{{ words.state_for | replace('{state}', state_translated(entity))"
+    "{{ words.state_for | replace('{state}', shown_state(entity))"
     " | replace('{duration}', duration((now() - state_since).total_seconds() / 60)) }}"
     "{%- endif -%}"
 )
 
 # Förlopp: tid kvar, «40 min kvar», för en timer, en sluttid eller en sensor med tid kvar;
 # annars tillståndet, till exempel procenten.
-_TIME_LEFT = _DURATION + (
+_TIME_LEFT = _DURATION + _STATE + (
     "{%- set s = states[entity] if entity else none -%}"
     "{%- set a = s.attributes if s else {} -%}"
     "{%- set units = {'ms': 0.001, 's': 1, 'min': 60, 'h': 3600, 'd': 86400} -%}"
@@ -84,12 +93,18 @@ _TIME_LEFT = _DURATION + (
     "{%- endif -%}"
     "{%- if ns.left is not none -%}"
     "{{ words.time_left | replace('{duration}', duration((ns.left / 60) | round(0, 'ceil'))) }}"
-    "{%- elif s -%}{{ states(entity, with_unit=True) }}"
+    "{%- elif s -%}"
+    "{{ states(entity, with_unit=True) if is_number(s.state) else shown_state(entity) }}"
     "{%- endif -%}"
 )
 
-# Värde: talet med enhet, «52 %».
-_VALUE = "{{ states(entity, rounded=True, with_unit=True) if entity else '' }}"
+# Värde: talet med enhet, «52 %», eller tillståndet när det inte är ett tal.
+_VALUE = _STATE + (
+    "{%- if entity and is_number(states(entity)) -%}"
+    "{{ states(entity, rounded=True, with_unit=True) }}"
+    "{%- elif entity -%}{{ shown_state(entity) }}"
+    "{%- endif -%}"
+)
 
 # Kommande: nästa tillfälle, «Nästa: Sophämtning». Utan namn visas tiden, med datum när
 # det inte är i dag.

@@ -117,7 +117,17 @@ async def _shown_keys(hass: HomeAssistant) -> set[str]:
     }
     # Orden i de färdiga mallarna för orsaken.
     keys |= {
-        f"reason.{word}" for word in ("state_for", "time_left", "next", "minutes", "hours", "days")
+        f"reason.{word}"
+        for word in (
+            "state_for",
+            "time_left",
+            "next",
+            "minutes",
+            "hours",
+            "days",
+            "unavailable",
+            "unknown",
+        )
     }
 
     subentry_id = await add_rule(hass, entry, "value", BILEN, ALWAYS_GLANCE)

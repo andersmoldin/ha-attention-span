@@ -100,6 +100,8 @@ async def test_a_rule_without_actions_has_an_empty_list(hass: HomeAssistant):
         [{"action": "button.press", "target": {"entity_id": "{{ 'button.findus_restart' }}"}}],
         # Inget tjänsteanrop alls.
         [],
+        # Den gamla nyckeln service i stället för action.
+        [{"service": "button.press", "target": {"entity_id": "button.findus_restart"}}],
     ],
 )
 async def test_an_action_must_be_one_service_call_without_templates(

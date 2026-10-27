@@ -161,7 +161,7 @@
         "entities_required": "Välj minst en kalender eller sensor.",
         "invalid_card": "Ange en kortkonfiguration med type, till exempel type: weather-forecast.",
         "template_required": "Skriv en template, eller välj en färdig mall.",
-        "invalid_action": "Varje åtgärd behöver en knapptext och precis ett tjänsteanrop utan templates."
+        "invalid_action": "Varje åtgärd behöver en knapptext och precis ett tjänsteanrop utan templates, med tjänsten under action (inte service)."
       },
       "abort": {
         "reconfigure_successful": "Regeln har ändrats."
@@ -230,6 +230,8 @@
     "next": "Nästa: {next}",
     "minutes": "{count} min",
     "hours": "{count} tim",
-    "days": "{count} d"
+    "days": "{count} d",
+    "unavailable": "Ej tillgänglig",
+    "unknown": "Okänd"
   }
 }

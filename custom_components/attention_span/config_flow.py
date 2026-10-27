@@ -96,7 +96,7 @@ ACTION_CALL = "action"
 ACTION_CONFIRMATION = "confirmation"
 # Det i ett tjänsteanrop från HA:s åtgärdsväljare som kortet kan anropa. metadata och alias
 # lägger väljaren själv till och påverkar inte anropet.
-_ACTION_KEYS = {"action", "service", "target", "data", "metadata", "alias"}
+_ACTION_KEYS = {"action", "target", "data", "metadata", "alias"}
 
 
 class AttentionSpanConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -312,7 +312,7 @@ def _action(field: Mapping[str, Any]) -> dict[str, Any]:
         raise vol.Invalid("target och data ska vara objekt")
     action: dict[str, Any] = {
         "name": name,
-        "action": cv.service(call.get("action", call.get("service"))),
+        "action": cv.service(call.get("action")),
         "target": dict(target),
         "data": dict(data),
         "confirmation": str(field.get(ACTION_CONFIRMATION) or "").strip() or None,

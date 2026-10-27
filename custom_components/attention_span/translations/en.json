@@ -161,7 +161,7 @@
         "entities_required": "Choose at least one calendar or sensor.",
         "invalid_card": "Enter a card configuration with a type, for example type: weather-forecast.",
         "template_required": "Write a template, or pick a ready-made one.",
-        "invalid_action": "Each action needs a button text and exactly one service call without templates."
+        "invalid_action": "Each action needs a button text and exactly one service call without templates, with the service under action (not service)."
       },
       "abort": {
         "reconfigure_successful": "The rule has been updated."
@@ -230,6 +230,8 @@
     "next": "Next: {next}",
     "minutes": "{count} min",
     "hours": "{count} h",
-    "days": "{count} d"
+    "days": "{count} d",
+    "unavailable": "Unavailable",
+    "unknown": "Unknown"
   }
 }
