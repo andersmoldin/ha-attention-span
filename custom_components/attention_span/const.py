@@ -42,6 +42,8 @@ CONF_FLAP_LIMIT: Final = "flap_limit"
 LEVELS: Final = ("alarm", "problem", "ongoing", "glance", "quiet")
 # Larm, den enda nivån som kan kvitteras.
 ALARM: Final = "alarm"
+# Nivåerna som kan läggas åt sidan: Problem och Pågår.
+SNOOZABLE: Final = ("problem", "ongoing")
 # Tillståndet när ingen nivå gäller. Ingen nivå i sig.
 HIDDEN: Final = "hidden"
 # Värdet för en nivå i CONF_LEVELS som gäller utan villkor. Övriga nivåer i CONF_LEVELS
@@ -54,3 +56,8 @@ SOURCE_RULE: Final = "rule"
 
 # Tjänsten som kvitterar ett Larm för hela hushållet.
 SERVICE_ACKNOWLEDGE: Final = "acknowledge"
+# Tjänsterna som lägger ett Problem eller en Pågår-notis åt sidan för hela hushållet, till
+# ATTR_UNTIL eller tills det är lagat, och tar fram den igen.
+SERVICE_SNOOZE: Final = "snooze"
+SERVICE_UNSNOOZE: Final = "unsnooze"
+ATTR_UNTIL: Final = "until"

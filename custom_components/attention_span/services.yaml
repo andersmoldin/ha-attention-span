@@ -3,3 +3,17 @@ acknowledge:
     entity:
       integration: attention_span
       domain: sensor
+snooze:
+  target:
+    entity:
+      integration: attention_span
+      domain: sensor
+  fields:
+    until:
+      selector:
+        datetime:
+unsnooze:
+  target:
+    entity:
+      integration: attention_span
+      domain: sensor

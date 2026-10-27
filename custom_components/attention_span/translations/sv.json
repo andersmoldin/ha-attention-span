@@ -263,11 +263,31 @@
     "acknowledge": {
       "name": "Kvittera",
       "description": "Kvitterar ett Larm för hela hushållet. Larmet ligger kvar i kompakt form tills villkoret har släppt eller tiden för «larma igen» har gått."
+    },
+    "snooze": {
+      "name": "Lägg åt sidan",
+      "description": "Lägger ett Problem eller en Pågår-notis åt sidan för hela hushållet. Den kommer tillbaka när tiden har gått ut, vid en ny händelse eller när nivån blir allvarligare.",
+      "fields": {
+        "until": {
+          "name": "Till",
+          "description": "När notisen kommer tillbaka. Lämna tomt för att lägga den åt sidan tills det är lagat."
+        }
+      }
+    },
+    "unsnooze": {
+      "name": "Ta fram igen",
+      "description": "Tar fram en notis som ligger åt sidan för hela hushållet."
     }
   },
   "exceptions": {
     "not_alarm": {
       "message": "{entity_id} är inte ett Larm. Bara Larm kan kvitteras."
+    },
+    "not_snoozable": {
+      "message": "{entity_id} är inte ett Problem eller Pågår. Bara Problem och Pågår kan läggas åt sidan."
+    },
+    "until_passed": {
+      "message": "{until} har redan varit. Välj en senare tid att lägga {entity_id} åt sidan till."
     }
   }
 }
