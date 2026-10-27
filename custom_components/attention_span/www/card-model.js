@@ -15,10 +15,14 @@ const DRAWN_TYPES = ["value", "status", "progress", "upcoming", "custom"];
 // Kortets egna texter, valda efter användarens språk (ADR 0001). status är Typen Status:
 // tillståndet och hur länge det har gällt, och group hur många medlemmar i en grupp som har
 // gruppens tillstånd. left är tid kvar för Typen Förlopp. now, soon,
-// today och tomorrow säger när ett tillfälle för Typen Kommande är.
+// today och tomorrow säger när ett tillfälle för Typen Kommande är. moreAlarms och
+// moreProblems står för Larmen och Problemen efter det första, med Larmens namn.
 const STRINGS = {
   en: {
     calm: "All is calm at home.",
+    moreAlarms: (names) =>
+      `＋${names.length} more ${names.length === 1 ? "alarm" : "alarms"}: ${names.join(", ")}`,
+    moreProblems: (count) => `+${count} more ${count === 1 ? "problem" : "problems"}`,
     status: (state, duration) => `${state} for ${duration}`,
     group: (state, count, total) => `${state} · ${count} of ${total}`,
     left: (duration) => `${duration} left`,
@@ -29,6 +33,8 @@ const STRINGS = {
   },
   sv: {
     calm: "Allt är lugnt hemma.",
+    moreAlarms: (names) => `＋${names.length} larm till: ${names.join(", ")}`,
+    moreProblems: (count) => `+${count} problem till`,
     status: (state, duration) => `${state} i ${duration}`,
     group: (state, count, total) => `${state} · ${count} av ${total}`,
     left: (duration) => `${duration} kvar`,

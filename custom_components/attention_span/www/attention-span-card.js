@@ -67,6 +67,13 @@ const STYLE = `
     font-family: inherit; font-size: 13.5px; font-weight: 500; cursor: pointer;
     color: var(--primary-text-color); background: var(--secondary-background-color); }
   .quiet .actions button { height: 28px; padding: 0 10px; font-size: 12.5px; }
+  /* Larmen och Problemen efter det första: en knapp i full bredd som visar alla. */
+  .more { display: block; width: 100%; min-height: 44px; padding: 10px 16px; border-style: none;
+    border-radius: 12px; font-family: inherit; font-size: 14px; font-weight: 500;
+    text-align: left; cursor: pointer; overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap; }
+  .more.alarm { color: var(--text-primary-color); background: var(--error-color); }
+  .more.problem { color: var(--primary-text-color); background: var(--secondary-background-color); }
   /* Det inbäddade kortet ligger i notisen: utan egen ram, skugga och bakgrund. */
   .custom { --ha-card-border-width: 0; --ha-card-box-shadow: none;
     --ha-card-background: transparent; }
@@ -310,6 +317,15 @@ function customRowElement(level, embeddedFor) {
   };
 }
 
+// Knappen för notiserna efter den första på en nivå. Ett tryck anropar showAll.
+function moreElement(level, showAll) {
+  const el = document.createElement("button");
+  el.type = "button";
+  el.className = `more ${level}`;
+  el.addEventListener("click", showAll);
+  return { el, update: (moreText) => setText(el, moreText) };
+}
+
 // Hur en notis byggs: som eget kort (notice) eller som rad (row), med ett inbäddat kort för
 // Eget kort och annars med text.
 const ELEMENTS = {
@@ -322,6 +338,8 @@ class AttentionSpanCard extends HTMLElement {
   _cards = new Map();
   // De ritade notiserna, per nivå, Typ och entitet, som uppdateras på plats.
   _drawnNotices = new Map();
+  // Nivåerna där Larmen eller Problemen efter det första visas, efter ett tryck på knappen.
+  _showAll = new Set();
 
   static getStubConfig() {
     return {};
@@ -354,13 +372,23 @@ class AttentionSpanCard extends HTMLElement {
       this.shadowRoot.innerHTML = `<style>${STYLE}</style><div class="stack"></div>`;
       this._calm = calmElement();
       this._rowsCard = document.createElement("ha-card");
+      this._more = Object.fromEntries(
+        ["alarm", "problem"].map((level) => [
+          level,
+          moreElement(level, () => {
+            this._showAll.add(level);
+            this._drawn = null;
+            this._render();
+          }),
+        ]),
+      );
     }
     const model = cardModel(this._hass, Date.now());
     const calmText = strings(this._hass).calm;
     // De inbäddade korten visar egna entiteter och behöver varje ny hass.
     for (const { el } of this._cards.values()) el.hass = this._hass;
     // Inget att göra när det kortet visar är detsamma som förra gången.
-    const drawn = JSON.stringify([model, calmText]);
+    const drawn = JSON.stringify([model, calmText, [...this._showAll]]);
     if (drawn === this._drawn) return;
     this._drawn = drawn;
     const levels = [...NEEDS_ATTENTION, "glance", "quiet"];
@@ -380,15 +408,29 @@ class AttentionSpanCard extends HTMLElement {
       ...(model.calm ? [this._calm.el] : []),
       ...["glance", "quiet"].flatMap((level) => model[level].map((row) => draw("row", row, level))),
     ];
-    const notices = NEEDS_ATTENTION.flatMap((level) =>
-      model[level].map((row) => draw("notice", row, level)),
-    );
+    const notices = NEEDS_ATTENTION.flatMap((level) => this._noticesAt(level, model[level], draw));
     this._drawnNotices = drawnNotices;
     placeChildren(this._rowsCard, rows);
     placeChildren(this.shadowRoot.querySelector(".stack"), [
       ...notices,
       ...(rows.length ? [this._rowsCard] : []),
     ]);
+  }
+
+  // Notiserna på en nivå som egna kort. På Larm och Problem visas det första och en knapp för
+  // resten, tills knappen trycks; nivån visar bara det första igen när resten har försvunnit.
+  _noticesAt(level, rows, draw) {
+    const more = this._more[level];
+    if (!more || rows.length < 2) this._showAll.delete(level);
+    if (!more || rows.length < 2 || this._showAll.has(level)) {
+      return rows.map((row) => draw("notice", row, level));
+    }
+    const [first, ...rest] = rows;
+    const text = strings(this._hass);
+    more.update(
+      level === "alarm" ? text.moreAlarms(rest.map((row) => row.name)) : text.moreProblems(rest.length),
+    );
+    return [draw("notice", first, level), more.el];
   }
 
   // Glöm de inbäddade korten för notiser som inte visas längre, och ladda HA:s verktyg för

@@ -114,12 +114,15 @@ async def add_rule(
     conditions: dict[str, list] | None = None,
     reason: dict | None = None,
     actions: list[dict] | None = None,
+    placement: str | None = None,
 ) -> str:
     """Lägg till en Rule via subentry-flödet och returnera subentryns id.
 
     levels är Inget, Alltid eller Villkor per nivå (utelämnad nivå är Inget) och
     conditions villkoren för nivåerna med Villkor och för Dölj när. reason är
-    orsaksstegets fält (utelämnat är ingen orsak) och actions åtgärderna.
+    orsaksstegets fält (utelämnat är ingen orsak) och actions åtgärderna. placement är
+    placeringen, «first» eller regeln den står efter, när formuläret frågar efter den
+    (utelämnad behåller förvalet).
     """
     before = set(entry.subentries)
     result = await start_rule(hass, entry, rule_type)
@@ -132,6 +135,7 @@ async def add_rule(
     result = await hass.config_entries.subentries.async_configure(
         result["flow_id"], conditions or {}
     )
+    result = await submit_placement(hass, result, placement)
     result = await submit_reason_and_actions(hass, result, reason, actions)
     assert result["type"] is FlowResultType.CREATE_ENTRY
     await hass.async_block_till_done()
@@ -148,8 +152,9 @@ async def reconfigure_rule(
     conditions: dict[str, list] | None = None,
     reason: dict | None = None,
     actions: list[dict] | None = None,
+    placement: str | None = None,
 ) -> None:
-    """Ändra en Rule; levels, conditions, reason och actions som i add_rule."""
+    """Ändra en Rule; levels, conditions, reason, actions och placement som i add_rule."""
     result = await start_rule_reconfigure(hass, entry, subentry_id)
     result = await hass.config_entries.subentries.async_configure(result["flow_id"], fields)
     assert result["step_id"] == "levels"
@@ -160,10 +165,26 @@ async def reconfigure_rule(
     result = await hass.config_entries.subentries.async_configure(
         result["flow_id"], conditions or {}
     )
+    result = await submit_placement(hass, result, placement)
     result = await submit_reason_and_actions(hass, result, reason, actions)
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "reconfigure_successful"
     await hass.async_block_till_done()
+
+
+async def submit_placement(
+    hass: HomeAssistant, result: FlowResult, placement: str | None
+) -> FlowResult:
+    """Välj placeringen när formuläret frågar efter den; None behåller förvalet."""
+    if result.get("step_id") != "placement":
+        assert placement is None, "formuläret frågade inte efter placeringen"
+        return result
+    if placement is None:
+        (field,) = result["data_schema"].schema
+        placement = field.default()
+    return await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {"placement": placement}
+    )
 
 
 async def submit_reason(hass: HomeAssistant, result: FlowResult, reason: dict) -> FlowResult:

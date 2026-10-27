@@ -928,3 +928,156 @@ test("en notis med orsak och en åtgärd med bekräftelse ritas som i det delade
     confirmation: { text: "Tysta frysens larm?" },
   });
 });
+
+// En notis från en annan regel med samma exempel: eget namn, egen entitet och eget ordningstal.
+// Den visar dörren, som har varit öppen i 10 minuter.
+function rule(name, priority, state) {
+  const stateObj = held("status_problem", 10, {
+    state,
+    attributes: { friendly_name: name, priority, icon: `mdi:${name.toLowerCase()}` },
+  });
+  stateObj.entity_id = `sensor.attention_span_${name.toLowerCase()}`;
+  return stateObj;
+}
+
+// Namnen på notiserna som ritas i full storlek, i ordning.
+function shownNotices(root) {
+  return [...root.querySelectorAll(".notice b")].map(text);
+}
+
+test("kortet ordnar först efter nivå och sedan efter regelns ordningstal", () => {
+  const root = renderCard(
+    fakeHass({
+      notices: [
+        rule("Garaget", 2, "ongoing"),
+        rule("Altanen", 1, "ongoing"),
+        rule("Brand", 3, "alarm"),
+        rule("Torken", 1, "glance"),
+      ],
+      values: [DORREN],
+    }),
+  );
+
+  assert.deepEqual(shownNotices(root), ["Brand", "Altanen", "Garaget"]);
+});
+
+test("med flera Problem visas det första i full storlek och resten bakom «+N problem till»", () => {
+  const root = renderCard(
+    fakeHass({
+      notices: [rule("Garaget", 3, "problem"), rule("Altanen", 1, "problem"), rule("Taket", 2, "problem")],
+      values: [DORREN],
+    }),
+  );
+
+  assert.deepEqual(shownNotices(root), ["Altanen"]);
+  assert.equal(text(root.querySelector(".more.problem")), "+2 problem till");
+});
+
+test("ett tryck på «+N problem till» visar alla Problem i full storlek", () => {
+  const root = renderCard(
+    fakeHass({
+      notices: [rule("Garaget", 3, "problem"), rule("Altanen", 1, "problem"), rule("Taket", 2, "problem")],
+      values: [DORREN],
+    }),
+  );
+
+  root.querySelector(".more.problem").click();
+
+  assert.deepEqual(shownNotices(root), ["Altanen", "Taket", "Garaget"]);
+  assert.equal(root.querySelector(".more"), null);
+});
+
+test("med flera Larm visas det första i full storlek och en röd stapel i full bredd med de övrigas namn", () => {
+  const root = renderCard(
+    fakeHass({
+      notices: [
+        rule("Brandvarnare", 2, "alarm"),
+        rule("Läckan", 1, "alarm"),
+        rule("Frysen", 3, "alarm"),
+        rule("Garaget", 1, "problem"),
+      ],
+      values: [DORREN],
+    }),
+  );
+  root.host.style.setProperty("--error-color", "rgb(219, 68, 55)");
+
+  assert.deepEqual(shownNotices(root), ["Läckan", "Garaget"]);
+  const more = root.querySelector(".more.alarm");
+  assert.equal(text(more), "＋2 larm till: Brandvarnare, Frysen");
+  // Stapeln står mellan det första Larmet och Problemen.
+  const stack = [...root.querySelector(".stack").children];
+  assert.equal(stack.indexOf(more), 1);
+  const style = window.getComputedStyle(more);
+  assert.equal(style.width, "100%");
+  assert.equal(style.backgroundColor, "rgb(219, 68, 55)");
+
+  more.click();
+
+  assert.deepEqual(shownNotices(root), ["Läckan", "Brandvarnare", "Frysen", "Garaget"]);
+  assert.equal(root.querySelector(".more"), null);
+});
+
+test("knappen för resten följer användarens språk", () => {
+  const root = renderCard(
+    fakeHass({
+      notices: [
+        rule("Smoke", 1, "alarm"),
+        rule("Leak", 2, "alarm"),
+        rule("Garage", 1, "problem"),
+        rule("Roof", 2, "problem"),
+      ],
+      values: [DORREN],
+      language: "en",
+    }),
+  );
+
+  assert.deepEqual([...root.querySelectorAll(".more")].map(text), [
+    "＋1 more alarm: Leak",
+    "+1 more problem",
+  ]);
+});
+
+test("när resten har försvunnit visar nivån bara det första igen nästa gång", () => {
+  const two = [rule("Altanen", 1, "problem"), rule("Taket", 2, "problem")];
+  const root = renderCard(fakeHass({ notices: two, values: [DORREN] }));
+  root.querySelector(".more.problem").click();
+  assert.deepEqual(shownNotices(root), ["Altanen", "Taket"]);
+
+  root.host.hass = fakeHass({ notices: two.slice(0, 1), values: [DORREN] });
+  root.host.hass = fakeHass({ notices: two, values: [DORREN] });
+
+  assert.deepEqual(shownNotices(root), ["Altanen"]);
+  assert.equal(text(root.querySelector(".more.problem")), "+1 problem till");
+});
+
+// Uppdatering på plats (0.3.1) med rangordningen: notiserna som visas och knappen för resten
+// byggs en gång och flyttas eller uppdateras sedan, så att ikoner och knappar inte skapas om.
+test("en ny notis bakom «+N» och en ändrad ordning skapar inte notiserna, ikonerna eller knapparna igen", () => {
+  const alarms = [rule("Läckan", 1, "alarm"), rule("Brand", 2, "alarm")];
+  const problems = [rule("Altanen", 1, "problem"), rule("Taket", 2, "problem")];
+  for (const stateObj of [...alarms, ...problems]) stateObj.attributes.actions = [DOCK];
+  const hass = fakeHass({ notices: [...alarms, ...problems], values: [DORREN] });
+  const root = renderCard(hass);
+  const drawn = [...root.querySelectorAll("*")];
+  const loaded = icons.loaded;
+
+  const garaget = rule("Garaget", 3, "problem");
+  const kok = { entity_id: "light.kok", state: "on", attributes: {} };
+  root.host.hass = fakeHass({ notices: [...alarms, ...problems, garaget], values: [DORREN, kok] });
+
+  assert.ok(same(drawn, [...root.querySelectorAll("*")]), "elementen skapades om");
+  assert.equal(text(root.querySelector(".more.problem")), "+2 problem till");
+  assert.equal(icons.loaded, loaded);
+
+  root.querySelector(".more.alarm").click();
+  const shown = new Set(root.querySelectorAll("*"));
+  const loadedAll = icons.loaded;
+  const swapped = [rule("Läckan", 2, "alarm"), rule("Brand", 1, "alarm")];
+  for (const stateObj of swapped) stateObj.attributes.actions = [DOCK];
+  root.host.hass = fakeHass({ notices: [...swapped, ...problems, garaget], values: [DORREN] });
+
+  assert.deepEqual(shownNotices(root), ["Brand", "Läckan", "Altanen"]);
+  const after = [...root.querySelectorAll("*")];
+  assert.ok(after.length === shown.size && after.every((el) => shown.has(el)), "elementen skapades om");
+  assert.equal(icons.loaded, loadedAll);
+});
