@@ -115,6 +115,24 @@ async def _shown_keys(hass: HomeAssistant) -> set[str]:
         f"{rule}.error.template_required",
         f"{rule}.error.invalid_action",
     }
+    # Tiderna, med «larma igen» för en regel som kan bli Larm.
+    result = await start_rule(hass, entry, "status")
+    result = await hass.config_entries.subentries.async_configure(result["flow_id"], BILEN)
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], level_modes({"alarm": "always"})
+    )
+    result = await hass.config_entries.subentries.async_configure(result["flow_id"], {})
+    result = await submit_reason(hass, result, {"reason": "none"})
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {"actions": []}
+    )
+    keys |= _form_keys(rule, result) | {f"{rule}.error.realarm_positive"}
+    # Tjänsten och dess fel.
+    keys |= {
+        "services.acknowledge.name",
+        "services.acknowledge.description",
+        "exceptions.not_alarm.message",
+    }
     # Orden i de färdiga mallarna för orsaken.
     keys |= {
         f"reason.{word}"

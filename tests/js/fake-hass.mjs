@@ -52,12 +52,14 @@ export function status(entityId, state, minutes) {
   return { entity_id: entityId, state, attributes: {}, last_changed: changed };
 }
 
-// Som HA: tillstånden, entitetsregistret och formatEntityState. AttentionSpans
+// Som HA: tillstånden, entitetsregistret, formatEntityState och callService, som sparar
+// tjänsteanropen i calls som { domain, service, data, target }. AttentionSpans
 // entiteter hör till plattformen attention_span, groups till grupphjälparna (plattformen
 // group) och övriga till en annan integration.
 export function fakeHass({ notices = [], values = [], groups = [], language = "sv" } = {}) {
   const states = {};
   const entities = {};
+  const calls = [];
   for (const stateObj of notices) {
     states[stateObj.entity_id] = stateObj;
     entities[stateObj.entity_id] = { entity_id: stateObj.entity_id, platform: "attention_span" };
@@ -80,6 +82,10 @@ export function fakeHass({ notices = [], values = [], groups = [], language = "s
     formatEntityState: (stateObj) => {
       const unit = stateObj.attributes.unit_of_measurement;
       return unit ? `${stateObj.state} ${unit}` : stateObj.state;
+    },
+    calls,
+    callService: async (domain, service, data, target) => {
+      calls.push({ domain, service, data, target });
     },
   };
 }

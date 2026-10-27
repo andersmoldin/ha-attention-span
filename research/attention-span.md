@@ -149,7 +149,7 @@ Attributnamnen är ett versionerat, dokumenterat kontrakt så att tredjepartskor
 | `actions` | Åtgärder som kortet visar som knappar. Varje åtgärd har `name` (knappens text), `action` («domän.tjänst»), `target`, `data` och `confirmation` (texten kortet frågar med innan tjänsten anropas, eller `null`) |
 | `since` | När nuvarande nivå började gälla |
 | `acknowledged` | Om larmet är kvitterat |
-| `realarm_at` | När ett kvitterat larm larmar igen |
+| `realarm_at` | När ett kvitterat larm larmar igen; `null` när larmet inte är kvitterat eller aldrig larmar igen |
 | `snoozed` | Om notisen ligger åt sidan |
 | `snoozed_until` | Till när; `null` med `snoozed: true` betyder «tills det är lagat» |
 | `occurrences` | De närmaste tillfällena, först det tidigaste, bara för typen `upcoming`. Varje tillfälle har `start`, `end` och `summary`; heldag anges som datum, och för en sensor med tidpunkter är `end` och `summary` `null` |

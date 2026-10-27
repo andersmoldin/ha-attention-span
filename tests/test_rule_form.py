@@ -2,7 +2,14 @@ import pytest
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResult, FlowResultType, InvalidData
 
-from .conftest import add_integration, add_rule, level_modes, start_rule, start_rule_reconfigure
+from .conftest import (
+    add_integration,
+    add_rule,
+    level_modes,
+    start_rule,
+    start_rule_reconfigure,
+    submit_reason,
+)
 
 YTTERDORREN = {"name": "Ytterdörren", "icon": "mdi:door", "entity": "binary_sensor.ytterdorr"}
 # En template som användaren skrev den, så att den kan visas igen i formuläret.
@@ -187,9 +194,73 @@ async def test_changing_a_rule_shows_its_reason_and_actions_as_saved(hass: HomeA
         "actions": [{"name": "Lås", "action": restart, "confirmation": "Lås dörren?"}]
     }
     result = await submit(hass, result, {"actions": []})
+    result = await submit(hass, result, {"flap_limit": {"minutes": 5}})
 
     assert result["reason"] == "reconfigure_successful"
     await hass.async_block_till_done()
     state = hass.states.get("sensor.attention_span_ytterdorren")
     assert state.attributes["actions"] == []
     assert state.attributes["reason"] == "Öppen on"
+
+
+async def reach_timing(hass: HomeAssistant, levels: dict[str, str]) -> FlowResult:
+    """Fyll i en regel med Alltid på nivåerna fram till tiderna."""
+    entry = await add_integration(hass)
+    result = await submit(hass, await start_rule(hass, entry, "status"), YTTERDORREN)
+    result = await submit(hass, result, level_modes(levels))
+    result = await submit(hass, result, {})
+    result = await submit_reason(hass, result, {"reason": "none"})
+    result = await submit(hass, result, {"actions": []})
+    assert result["step_id"] == "timing"
+    return result
+
+
+async def test_a_rule_that_can_be_an_alarm_asks_when_to_alarm_again_by_default_after_24_h(
+    hass: HomeAssistant,
+):
+    result = await reach_timing(hass, {"alarm": "always", "quiet": "always"})
+
+    assert suggested(result) == {
+        "realarm_after": {"hours": 24},
+        "flap_limit": {"minutes": 5},
+    }
+
+
+async def test_a_rule_that_cannot_be_an_alarm_only_asks_for_the_flap_limit(hass: HomeAssistant):
+    result = await reach_timing(hass, {"problem": "always"})
+
+    assert suggested(result) == {"flap_limit": {"minutes": 5}}
+
+
+async def test_alarming_again_needs_a_time_longer_than_zero(hass: HomeAssistant):
+    result = await reach_timing(hass, {"alarm": "always"})
+
+    result = await submit(
+        hass, result, {"realarm_after": {"hours": 0}, "flap_limit": {"minutes": 5}}
+    )
+
+    assert result["step_id"] == "timing"
+    assert result["errors"] == {"realarm_after": "realarm_positive"}
+
+
+async def test_changing_a_rule_shows_its_times_as_saved(hass: HomeAssistant):
+    entry = await add_integration(hass)
+    rule = await add_rule(
+        hass,
+        entry,
+        "status",
+        YTTERDORREN,
+        levels={"alarm": "always"},
+        timing={"flap_limit": {"minutes": 1}},
+    )
+
+    result = await start_rule_reconfigure(hass, entry, rule)
+    result = await submit(hass, result, YTTERDORREN)
+    result = await submit(hass, result, level_modes({"alarm": "always"}))
+    result = await submit(hass, result, {})
+    result = await submit(hass, result, {"reason": "none"})
+    result = await submit(hass, result, {"actions": []})
+
+    assert result["step_id"] == "timing"
+    # Inget «larma igen» betyder aldrig, och fältet visas tomt.
+    assert suggested(result) == {"realarm_after": None, "flap_limit": {"minutes": 1}}

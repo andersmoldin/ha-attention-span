@@ -47,8 +47,12 @@ _Avoid_: Dismiss, mute, acknowledge
 A Rule reaching a Level again after having been below it (at a lower Level or Hidden).
 _Avoid_: Retrigger
 
+**Flap limit** (fladdergräns):
+How long a Rule must have been below a Level before its condition counts as no longer holding, set per Rule. Shorter breaks, such as a sensor switching on and off, neither make a New occurrence nor reset an acknowledgement.
+_Avoid_: Debounce, grace period
+
 **Acknowledge** (kvittera):
-Marking an Alarm as known by the household. The Alarm stays visible in compact form until its condition no longer holds or a set time has passed.
+Marking an Alarm as known by the household. The Alarm stays visible in compact form until its condition no longer holds (longer than the Flap limit) or the time to alarm again has passed.
 _Avoid_: Dismiss, confirm, snooze
 
 ### Levels

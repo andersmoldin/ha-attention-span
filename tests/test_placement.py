@@ -1,15 +1,7 @@
 """Placeringen: var en regel står bland regler som kan hamna på samma nivå."""
 
-from homeassistant.config_entries import (
-    SIGNAL_CONFIG_ENTRY_CHANGED,
-    ConfigEntry,
-    ConfigEntryChange,
-    ConfigEntryState,
-)
-from homeassistant.const import EVENT_STATE_CHANGED, STATE_UNAVAILABLE
-from homeassistant.core import Event, HomeAssistant, callback
+from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResult, FlowResultType
-from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
 from .conftest import (
     ALWAYS_GLANCE,
@@ -22,7 +14,8 @@ from .conftest import (
     reconfigure_rule,
     start_rule,
     start_rule_reconfigure,
-    submit_reason_and_actions,
+    submit_reason_actions_and_timing,
+    watch,
 )
 
 INNE = {"name": "Inne", "icon": "mdi:thermometer", "entity": "sensor.inne"}
@@ -42,28 +35,6 @@ def placement_options(result: FlowResult) -> list[tuple[str, str]]:
 def priorities(hass: HomeAssistant, *names: str) -> list[int]:
     states = [hass.states.get(f"sensor.attention_span_{name}") for name in names]
     return [state.attributes["priority"] for state in states]
-
-
-def watch(hass: HomeAssistant, entry: ConfigEntry) -> tuple[list[str], list[str]]:
-    """Följ entiteterna och posten: entiteter som blir otillgängliga eller försvinner, och
-    varje gång posten laddas ur."""
-    gone: list[str] = []
-    unloads: list[str] = []
-
-    @callback
-    def state_changed(event: Event) -> None:
-        new = event.data["new_state"]
-        if new is None or new.state == STATE_UNAVAILABLE:
-            gone.append(event.data["entity_id"])
-
-    @callback
-    def entry_changed(change: ConfigEntryChange, changed: ConfigEntry) -> None:
-        if changed.entry_id == entry.entry_id and changed.state is ConfigEntryState.NOT_LOADED:
-            unloads.append(changed.entry_id)
-
-    hass.bus.async_listen(EVENT_STATE_CHANGED, state_changed)
-    async_dispatcher_connect(hass, SIGNAL_CONFIG_ENTRY_CHANGED, entry_changed)
-    return gone, unloads
 
 
 async def test_the_placement_lists_first_and_the_rules_that_share_a_level(hass: HomeAssistant):
@@ -131,7 +102,7 @@ async def test_without_rules_on_the_same_level_the_form_does_not_ask_and_the_rul
     result = await submit(hass, result, level_modes(ALWAYS_QUIET))
     result = await submit(hass, result, {})
     assert result["step_id"] == "reason"
-    result = await submit_reason_and_actions(hass, result, None, None)
+    result = await submit_reason_actions_and_timing(hass, result, None, None)
     await hass.async_block_till_done()
 
     assert priorities(hass, "bilen", "elpris") == [1, 2]
@@ -205,7 +176,7 @@ async def test_the_form_starts_over_when_the_rule_it_places_after_is_removed(has
 
     assert hass.config_entries.async_remove_subentry(entry, bilen)
     await hass.async_block_till_done()
-    result = await submit_reason_and_actions(hass, result, None, None)
+    result = await submit_reason_actions_and_timing(hass, result, None, None)
 
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "rules_changed"

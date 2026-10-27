@@ -231,7 +231,7 @@ test("Larm, Problem och Pågår ritas som egna kort i den ordningen, över Blick
   assert.deepEqual(
     parts.map((el) => [el.className, text(el)]),
     [
-      ["notice alarm", "Findus Otillgänglig i 3 tim"],
+      ["notice alarm", "Findus Otillgänglig i 3 timKvittera"],
       ["notice problem", "Ytterdörren Öppen i 10 min"],
       ["notice ongoing", "Tvätten Kör i 25 min"],
       ["glance", "52 % Bilen"],
@@ -931,10 +931,10 @@ test("en notis med orsak och en åtgärd med bekräftelse ritas som i det delade
 
 // En notis från en annan regel med samma exempel: eget namn, egen entitet och eget ordningstal.
 // Den visar dörren, som har varit öppen i 10 minuter.
-function rule(name, priority, state) {
+function rule(name, priority, state, attributes = {}) {
   const stateObj = held("status_problem", 10, {
     state,
-    attributes: { friendly_name: name, priority, icon: `mdi:${name.toLowerCase()}` },
+    attributes: { friendly_name: name, priority, icon: `mdi:${name.toLowerCase()}`, ...attributes },
   });
   stateObj.entity_id = `sensor.attention_span_${name.toLowerCase()}`;
   return stateObj;
@@ -1080,4 +1080,128 @@ test("en ny notis bakom «+N» och en ändrad ordning skapar inte notiserna, iko
   const after = [...root.querySelectorAll("*")];
   assert.ok(after.length === shown.size && after.every((el) => shown.has(el)), "elementen skapades om");
   assert.equal(icons.loaded, loadedAll);
+});
+
+// Ett Larm som hushållet har kvitterat och som larmar igen om minutes minuter.
+function acknowledged(name, priority, minutes) {
+  return rule(name, priority, "alarm", { acknowledged: true, realarm_at: ago(-minutes) });
+}
+
+test("ett Larm har knappen Kvittera, som kvitterar Larmet för hela hushållet", () => {
+  const hass = fakeHass({ notices: [held("status_alarm", 3 * 60)], values: [FINDUS] });
+  const root = renderCard(hass);
+  const dialogs = opened(root);
+
+  const [button] = root.querySelectorAll(".notice.alarm button");
+  assert.equal(text(button), "Kvittera");
+  button.click();
+
+  assert.deepEqual(hass.calls, [
+    {
+      domain: "attention_span",
+      service: "acknowledge",
+      data: {},
+      target: { entity_id: "sensor.attention_span_findus" },
+    },
+  ]);
+  assert.deepEqual(dialogs, [], "ett tryck på Kvittera öppnade detaljdialogen");
+});
+
+test("Kvittera står före Larmets egna åtgärder, och bara på Larm", () => {
+  const findus = held("status_alarm", 3 * 60, { attributes: { actions: [DOCK] } });
+  const dorren = held("status_problem", 10, { attributes: { actions: [RESTART] } });
+  const root = renderCard(fakeHass({ notices: [findus, dorren], values: [FINDUS, DORREN] }));
+
+  assert.deepEqual([...root.querySelectorAll(".notice.alarm button")].map(text), [
+    "Kvittera",
+    "Docka",
+  ]);
+  assert.deepEqual([...root.querySelectorAll(".notice.problem button")].map(text), [
+    "Starta om",
+  ]);
+});
+
+test("ett kvitterat Larm ritas kompakt, utan Kvittera, med när det larmar igen", () => {
+  const findus = notice("status_alarm_acknowledged", {
+    attributes: { realarm_at: ago(-23 * 60 - 30), actions: [DOCK] },
+  });
+  const root = renderCard(fakeHass({ notices: [findus], values: [FINDUS] }));
+
+  const alarm = root.querySelector(".notice.alarm");
+  assert.ok(alarm.classList.contains("acknowledged"));
+  assert.equal(text(alarm.querySelector(".head")), "Findus Kvitterad · larmar igen om 23 tim");
+  assert.deepEqual([...alarm.querySelectorAll("button")].map(text), ["Docka"]);
+});
+
+test("ett kvitterat Larm som aldrig larmar igen säger bara att det är kvitterat", () => {
+  const findus = notice("status_alarm_acknowledged", { attributes: { realarm_at: null } });
+  const root = renderCard(fakeHass({ notices: [findus], values: [FINDUS] }));
+
+  assert.equal(text(root.querySelector(".notice.alarm")), "Findus Kvitterad");
+});
+
+test("ett kvitterat Larm ritas mindre än ett okvitterat, med färger ur temat", () => {
+  const root = renderCard(
+    fakeHass({ notices: [rule("Läckan", 1, "alarm"), acknowledged("Brand", 2, 60)] }),
+  );
+  root.querySelector(".more.alarm").click();
+
+  const [open, known] = root.querySelectorAll(".notice.alarm");
+  const size = (el, selector) => window.getComputedStyle(el.querySelector(selector)).fontSize;
+  assert.equal(size(open, "b"), "20px");
+  assert.equal(size(known, "b"), "16px");
+  assert.equal(window.getComputedStyle(known.querySelector("ha-icon")).width, "42px");
+});
+
+test("okvitterade Larm kommer före kvitterade, så att nästa okvitterade tar det förstas plats", () => {
+  const root = renderCard(
+    fakeHass({
+      notices: [acknowledged("Läckan", 1, 60), rule("Brand", 3, "alarm"), rule("Frysen", 2, "alarm")],
+    }),
+  );
+
+  assert.deepEqual(shownNotices(root), ["Frysen"]);
+  assert.equal(text(root.querySelector(".more.alarm")), "＋2 larm till: Brand, Läckan");
+  root.querySelector(".more.alarm").click();
+  assert.deepEqual(shownNotices(root), ["Frysen", "Brand", "Läckan"]);
+});
+
+test("kvitteringen följer användarens språk", () => {
+  const findus = notice("status_alarm", { attributes: { state_since: ago(3 * 60) } });
+  const known = notice("status_alarm_acknowledged", { attributes: { realarm_at: ago(-90) } });
+  known.entity_id = "sensor.attention_span_findus_2";
+
+  const root = renderCard(fakeHass({ notices: [findus, known], values: [FINDUS], language: "en" }));
+  root.querySelector(".more.alarm").click();
+
+  const [first, second] = root.querySelectorAll(".notice.alarm");
+  assert.equal(text(first.querySelector("button")), "Acknowledge");
+  assert.equal(text(second.querySelector("small")), "Acknowledged · alarms again in 1 hr");
+});
+
+test("ett Larm som kvitteras och larmar igen uppdateras på plats, utan att ikonen laddas igen", () => {
+  const findus = held("status_alarm", 3 * 60, { attributes: { actions: [DOCK] } });
+  const root = renderCard(fakeHass({ notices: [findus], values: [FINDUS] }));
+  const alarm = root.querySelector(".notice.alarm");
+  const icon = alarm.querySelector("ha-icon");
+  const dock = [...alarm.querySelectorAll("button")].at(-1);
+  const loaded = icons.loaded;
+
+  const known = notice("status_alarm_acknowledged", {
+    attributes: { realarm_at: ago(-60), actions: [DOCK] },
+  });
+  root.host.hass = fakeHass({ notices: [known], values: [FINDUS] });
+
+  assert.equal(root.querySelector(".notice.alarm"), alarm, "Larmet ritades om");
+  assert.ok(alarm.classList.contains("acknowledged"));
+  assert.deepEqual([...alarm.querySelectorAll("button")].map(text), ["Docka"]);
+
+  root.host.hass = fakeHass({ notices: [findus], values: [FINDUS] });
+
+  assert.equal(root.querySelector(".notice.alarm"), alarm, "Larmet ritades om");
+  assert.ok(!alarm.classList.contains("acknowledged"));
+  assert.deepEqual([...alarm.querySelectorAll("button")].map(text), ["Kvittera", "Docka"]);
+  assert.equal(alarm.querySelector("ha-icon"), icon, "ikonen skapades om");
+  assert.equal([...alarm.querySelectorAll("button")].at(-1), dock, "åtgärdsknappen skapades om");
+  assert.equal(icons.loaded, loaded);
 });

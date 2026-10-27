@@ -1,0 +1,5 @@
+acknowledge:
+  target:
+    entity:
+      integration: attention_span
+      domain: sensor
