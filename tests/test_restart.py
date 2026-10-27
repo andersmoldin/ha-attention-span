@@ -318,11 +318,13 @@ async def test_status_keeps_its_time_while_the_entity_waits_with_the_same_state(
 
 
 async def add_lamp_in_hallen(hass: HomeAssistant) -> tuple[str, str]:
-    """Lampan i hallen och dess område, som HA läser in ur sina register vid start."""
+    """Lampan och Findus i hallen, som HA läser in ur sina register vid start."""
     area = ar.async_get(hass).async_get_or_create("Hallen")
     entities = er.async_get(hass)
     lamp = entities.async_get_or_create("light", "test", "hallen", suggested_object_id="hallen")
     entities.async_update_entity(lamp.entity_id, area_id=area.id)
+    findus = entities.async_get_or_create("vacuum", "test", "findus", suggested_object_id="findus")
+    entities.async_update_entity(findus.entity_id, area_id=area.id)
     assert await async_setup_component(hass, "light", {})
     return lamp.entity_id, area.id
 
@@ -330,7 +332,11 @@ async def add_lamp_in_hallen(hass: HomeAssistant) -> tuple[str, str]:
 async def test_a_timed_condition_on_an_area_keeps_its_time_while_the_entity_waits(
     hass: HomeAssistant, freezer
 ):
-    """Villkoret pekar ut lampan genom dess område, inte genom entity_id."""
+    """Villkoret pekar ut lampan genom dess område, inte genom entity_id.
+
+    Findus står också i hallen och väntar på sin integration, men villkoret tittar bara på
+    lamporna.
+    """
     freezer.move_to(FIXTURE_TIME)
     lamp, area = await add_lamp_in_hallen(hass)
     hass.states.async_set(lamp, "on")
@@ -358,6 +364,7 @@ async def test_a_timed_condition_on_an_area_keeps_its_time_while_the_entity_wait
     async with restart(hass) as hass:
         await add_lamp_in_hallen(hass)
         hass.states.async_set(lamp, "unavailable", {"restored": True})
+        hass.states.async_set("vacuum.findus", "unavailable", {"restored": True})
         await start(hass)
         await tick(hass, freezer, timedelta(seconds=5))
 
@@ -371,3 +378,8 @@ async def test_a_timed_condition_on_an_area_keeps_its_time_while_the_entity_wait
         state = hass.states.get("sensor.attention_span_ytterdorren")
         assert state.state == "alarm"
         assert state.attributes["since"] == "2026-10-26T08:10:01+00:00"
+
+        hass.states.async_set(lamp, "off")
+        await hass.async_block_till_done()
+
+        assert hass.states.get("sensor.attention_span_ytterdorren").state == "hidden"

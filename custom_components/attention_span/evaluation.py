@@ -32,6 +32,7 @@ from homeassistant.helpers.condition import (
     CompoundConditionChecker,
     ConditionChecker,
     ConditionCheckParams,
+    EntityConditionBase,
     NotConditionChecker,
     OrConditionChecker,
 )
@@ -167,8 +168,8 @@ class _LastingCondition(ConditionChecker):
         self._untimed = untimed
         self._duration = duration
         self._entities = entities
-        # Område, enhet, våning och etikett i villkorets target. Vilka entiteter de pekar ut
-        # kan ändras, så de slås upp vid varje kontroll.
+        # Villkorets target. Vilka entiteter ett område, en enhet, en våning eller en etikett
+        # pekar ut kan ändras, så de slås upp vid varje kontroll.
         self._target = target
         # Nyckel -> när villkoret utan tid började gälla. Saknas nyckeln gäller det inte.
         self._started = started
@@ -230,11 +231,23 @@ class _LastingCondition(ConditionChecker):
         villkoret. Till dess gäller villkoret som före omstarten, och när det började gälla
         sparas tills entiteten har ett riktigt tillstånd.
         """
-        targeted = async_extract_referenced_entity_ids(self._hass, self._target, expand_group=False)
+        entities = self._entities
+        # Ett villkor på target tittar bara på de utpekade entiteter som det självt väljer ut,
+        # till exempel lamporna i området, som i HA.
+        if isinstance(self._untimed, EntityConditionBase):
+            targeted = async_extract_referenced_entity_ids(
+                self._hass,
+                self._target,
+                expand_group=False,
+                primary_entities_only=self._untimed._primary_entities_only,
+            )
+            entities = self._untimed.entity_filter(
+                targeted.referenced | targeted.indirectly_referenced
+            )
         return any(
             (state := self._hass.states.get(entity_id)) is not None
             and state.attributes.get(ATTR_RESTORED) is True
-            for entity_id in self._entities | targeted.referenced | targeted.indirectly_referenced
+            for entity_id in entities
         )
 
     @callback
