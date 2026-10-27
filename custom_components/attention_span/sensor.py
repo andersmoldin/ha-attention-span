@@ -139,22 +139,25 @@ class RuleSensor(SensorEntity, RestoreEntity):
     def _async_shown_changed(self, _: Event[EventStateChangedData] | None = None) -> None:
         """Typen Status: håll reda på när den visade entiteten fick sitt tillstånd.
 
-        Har den samma tillstånd som före omstarten har tillståndet gällt sedan dess. Saknas
-        den, eller väntar den på att dess integration ska laddas (restored), är tiden okänd.
+        Har den samma tillstånd som före omstarten har tillståndet gällt sedan dess, också
+        medan den väntar på att dess integration ska laddas (restored). Saknas den, eller
+        väntar den med ett annat tillstånd, är tiden okänd.
         """
         entity_id = self._rule[CONF_ENTITIES][0]
         shown = self.hass.states.get(entity_id)
         since = None
-        if shown is not None and shown.attributes.get(ATTR_RESTORED) is not True:
+        if shown is not None:
             if (
-                self._shown is None
-                or self._shown["entity"] != entity_id
-                or self._shown["state"] != shown.state
+                self._shown is not None
+                and self._shown["entity"] == entity_id
+                and self._shown["state"] == shown.state
             ):
+                since = self._shown["since"]
+            elif shown.attributes.get(ATTR_RESTORED) is not True:
                 self._shown = SavedState(
                     entity=entity_id, state=shown.state, since=shown.last_changed.isoformat()
                 )
-            since = self._shown["since"]
+                since = self._shown["since"]
         self._async_save()
         if since != self._attr_extra_state_attributes["state_since"]:
             self._attr_extra_state_attributes["state_since"] = since

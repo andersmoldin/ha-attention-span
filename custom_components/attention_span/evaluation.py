@@ -21,6 +21,7 @@ from homeassistant.const import (
     CONF_ENABLED,
     CONF_FOR,
     CONF_OPTIONS,
+    CONF_TARGET,
 )
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
 from homeassistant.exceptions import ConditionError, ConditionErrorMessage, TemplateError
@@ -35,6 +36,7 @@ from homeassistant.helpers.condition import (
     OrConditionChecker,
 )
 from homeassistant.helpers.event import async_track_time_interval
+from homeassistant.helpers.target import TargetSelection, async_extract_referenced_entity_ids
 from homeassistant.helpers.template import render_complex
 from homeassistant.util import dt as dt_util
 
@@ -154,6 +156,7 @@ class _LastingCondition(ConditionChecker):
         untimed: ConditionChecker,
         duration: Any,
         entities: set[str],
+        target: TargetSelection,
         started: dict[str, datetime],
     ) -> None:
         super().__init__(hass)
@@ -164,6 +167,9 @@ class _LastingCondition(ConditionChecker):
         self._untimed = untimed
         self._duration = duration
         self._entities = entities
+        # Område, enhet, våning och etikett i villkorets target. Vilka entiteter de pekar ut
+        # kan ändras, så de slås upp vid varje kontroll.
+        self._target = target
         # Nyckel -> när villkoret utan tid började gälla. Saknas nyckeln gäller det inte.
         self._started = started
 
@@ -185,6 +191,7 @@ class _LastingCondition(ConditionChecker):
             await _async_checker(hass, untimed_config),
             timed_validated[CONF_FOR],
             condition.async_extract_entities(validated),
+            TargetSelection(validated.get(CONF_TARGET, {})),
             started,
         )
         await checker.async_setup()
@@ -223,10 +230,11 @@ class _LastingCondition(ConditionChecker):
         villkoret. Till dess gäller villkoret som före omstarten, och när det började gälla
         sparas tills entiteten har ett riktigt tillstånd.
         """
+        targeted = async_extract_referenced_entity_ids(self._hass, self._target, expand_group=False)
         return any(
             (state := self._hass.states.get(entity_id)) is not None
             and state.attributes.get(ATTR_RESTORED) is True
-            for entity_id in self._entities
+            for entity_id in self._entities | targeted.referenced | targeted.indirectly_referenced
         )
 
     @callback

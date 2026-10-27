@@ -3,6 +3,8 @@
 from datetime import timedelta
 
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import area_registry as ar
+from homeassistant.helpers import entity_registry as er
 from homeassistant.setup import async_setup_component
 from pytest_homeassistant_custom_component.common import async_fire_time_changed
 
@@ -282,6 +284,8 @@ async def test_an_entity_waiting_for_its_integration_after_a_restart_keeps_its_t
         state = hass.states.get("sensor.attention_span_ytterdorren")
         assert state.state == "alarm"
         assert state.attributes["since"] == "2026-10-26T08:20:01+00:00"
+        # Det återställda tillståndet är inte det som gällde före omstarten.
+        assert state.attributes["state_since"] is None
 
         hass.states.async_set("binary_sensor.ytterdorr", "on")
         await hass.async_block_till_done()
@@ -290,3 +294,80 @@ async def test_an_entity_waiting_for_its_integration_after_a_restart_keeps_its_t
         assert state.state == "alarm"
         assert state.attributes["since"] == "2026-10-26T08:20:01+00:00"
         assert state.attributes["state_since"] == "2026-10-26T07:50:00+00:00"
+
+
+async def test_status_keeps_its_time_while_the_entity_waits_with_the_same_state(
+    hass: HomeAssistant, freezer
+):
+    """Findus är fortfarande offline efter omstarten, och dess integration går inte att ladda."""
+    freezer.move_to(FIXTURE_TIME)
+    hass.states.async_set("vacuum.findus", "unavailable")
+    await add_findus_rule(hass)
+    await tick(hass, freezer, timedelta(hours=2, seconds=1))
+    assert hass.states.get("sensor.attention_span_findus").state == "alarm"
+    freezer.move_to("2026-10-26T11:00:00+00:00")
+
+    async with restart(hass) as hass:
+        hass.states.async_set("vacuum.findus", "unavailable", {"restored": True})
+        await start(hass)
+
+        state = hass.states.get("sensor.attention_span_findus")
+        assert state.state == "alarm"
+        assert state.attributes["since"] == "2026-10-26T10:00:01+00:00"
+        assert state.attributes["state_since"] == FIXTURE_TIME
+
+
+async def add_lamp_in_hallen(hass: HomeAssistant) -> tuple[str, str]:
+    """Lampan i hallen och dess område, som HA läser in ur sina register vid start."""
+    area = ar.async_get(hass).async_get_or_create("Hallen")
+    entities = er.async_get(hass)
+    lamp = entities.async_get_or_create("light", "test", "hallen", suggested_object_id="hallen")
+    entities.async_update_entity(lamp.entity_id, area_id=area.id)
+    assert await async_setup_component(hass, "light", {})
+    return lamp.entity_id, area.id
+
+
+async def test_a_timed_condition_on_an_area_keeps_its_time_while_the_entity_waits(
+    hass: HomeAssistant, freezer
+):
+    """Villkoret pekar ut lampan genom dess område, inte genom entity_id."""
+    freezer.move_to(FIXTURE_TIME)
+    lamp, area = await add_lamp_in_hallen(hass)
+    hass.states.async_set(lamp, "on")
+    entry = await add_integration(hass)
+    await add_rule(
+        hass,
+        entry,
+        "status",
+        YTTERDORREN | {"entity": lamp},
+        {"alarm": "condition"},
+        {
+            "alarm": [
+                {
+                    "condition": "light.is_on",
+                    "target": {"area_id": area},
+                    "options": {"behavior": "any", "for": {"minutes": 10}},
+                }
+            ]
+        },
+    )
+    await tick(hass, freezer, timedelta(minutes=10, seconds=1))
+    assert hass.states.get("sensor.attention_span_ytterdorren").state == "alarm"
+    freezer.move_to("2026-10-26T09:00:00+00:00")
+
+    async with restart(hass) as hass:
+        await add_lamp_in_hallen(hass)
+        hass.states.async_set(lamp, "unavailable", {"restored": True})
+        await start(hass)
+        await tick(hass, freezer, timedelta(seconds=5))
+
+        state = hass.states.get("sensor.attention_span_ytterdorren")
+        assert state.state == "alarm"
+        assert state.attributes["since"] == "2026-10-26T08:10:01+00:00"
+
+        hass.states.async_set(lamp, "on")
+        await hass.async_block_till_done()
+
+        state = hass.states.get("sensor.attention_span_ytterdorren")
+        assert state.state == "alarm"
+        assert state.attributes["since"] == "2026-10-26T08:10:01+00:00"
