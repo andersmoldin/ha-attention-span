@@ -14,8 +14,8 @@ const STYLE = `
   .calm { display: flex; align-items: center; gap: 10px; padding: 6px 0;
     font-size: 13.5px; color: var(--secondary-text-color); }
   .calm i { flex: none; width: 9px; height: 9px; border-radius: 50%; background: var(--success-color); }
-  .notice { position: relative; overflow: hidden; display: flex; align-items: center; gap: 12px;
-    padding: 14px 16px; }
+  .notice { position: relative; overflow: hidden; display: flex; flex-wrap: wrap;
+    align-items: center; gap: 12px; padding: 14px 16px; }
   .notice::before { content: ""; position: absolute; top: 0; right: 0; bottom: 0; left: 0;
     opacity: 0.1; pointer-events: none; }
   .notice ha-icon { position: relative; flex: none; display: flex; align-items: center;
@@ -54,9 +54,19 @@ const STYLE = `
   .glance .bar, .quiet .bar { flex: 1 1 48px; min-width: 32px; }
   .notice span { flex: 1; }
   .notice.custom { flex-direction: column; align-items: stretch; }
-  .custom .head { display: flex; align-items: center; gap: 12px; }
+  /* Tryckytan: ikonen och texterna. Knapparna ligger bredvid, inte i den. */
+  .head { display: flex; flex: 1; align-items: center; gap: inherit; min-width: 0; }
+  .notice.custom .head { flex: none; }
   .glance.custom, .quiet.custom { display: block; }
   [role="button"] { cursor: pointer; }
+  .actions { position: relative; display: flex; flex-wrap: wrap; gap: 8px; }
+  .actions:empty, .head small:empty { display: none; }
+  .notice .actions { flex-basis: 100%; }
+  .glance .actions, .quiet .actions { flex: none; margin-left: auto; }
+  .actions button { height: 36px; padding: 0 14px; border-style: none; border-radius: 12px;
+    font-family: inherit; font-size: 13.5px; font-weight: 500; cursor: pointer;
+    color: var(--primary-text-color); background: var(--secondary-background-color); }
+  .quiet .actions button { height: 28px; padding: 0 10px; font-size: 12.5px; }
   /* Det inbäddade kortet ligger i notisen: utan egen ram, skugga och bakgrund. */
   .custom { --ha-card-border-width: 0; --ha-card-box-shadow: none;
     --ha-card-background: transparent; }
@@ -115,12 +125,13 @@ function barPart(parent) {
   };
 }
 
-// En notis som visar mer i HA:s detaljdialog: öppnas med tryck, Enter eller mellanslag.
-// Returnerar en funktion som sätter entiteten att visa, eller null när notisen inte visar mer.
+// el visar mer i HA:s detaljdialog: öppnas med tryck, Enter eller mellanslag.
+// Returnerar en funktion som sätter entiteten att visa.
 function moreInfoPart(el) {
   let entityId = null;
+  el.setAttribute("role", "button");
+  el.tabIndex = 0;
   const open = () => {
-    if (!entityId) return;
     el.dispatchEvent(
       new CustomEvent("hass-more-info", {
         detail: { entityId },
@@ -131,25 +142,56 @@ function moreInfoPart(el) {
   };
   el.addEventListener("click", open);
   el.addEventListener("keydown", (event) => {
-    if (!entityId || (event.key !== "Enter" && event.key !== " ")) return;
+    if (event.key !== "Enter" && event.key !== " ") return;
     event.preventDefault();
     open();
   });
   return (moreInfo) => {
-    if (moreInfo === entityId) return;
     entityId = moreInfo;
-    if (entityId) {
-      el.setAttribute("role", "button");
-      el.tabIndex = 0;
-    } else {
-      el.removeAttribute("role");
-      el.removeAttribute("tabindex");
-    }
   };
 }
 
-// Namnet och det Typen visar, med en stapel för Förlopp. first och second är texterna i
-// ordning; ett Värde står före namnet på Blick och Tyst.
+// Åtgärderna som knappar. Ett tryck ber HA anropa tjänsten som en knapp i Lovelace gör
+// (hass-action), så att HA:s egen dialog frågar med bekräftelsetexten först när den finns.
+// Knapparna byggs bara om när åtgärderna ändras. Utan åtgärder är raden tom och dold.
+function actionsPart() {
+  const el = document.createElement("div");
+  el.className = "actions";
+  let drawn = null;
+  const update = (entityId, actions) => {
+    const key = JSON.stringify([entityId, actions]);
+    if (key === drawn) return;
+    drawn = key;
+    el.replaceChildren(...actions.map((action) => actionButton(entityId, action)));
+  };
+  return { el, update };
+}
+
+function actionButton(entityId, action) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.textContent = action.name;
+  const tapAction = {
+    action: "perform-action",
+    perform_action: action.action,
+    target: action.target,
+    data: action.data,
+  };
+  if (action.confirmation) tapAction.confirmation = { text: action.confirmation };
+  button.addEventListener("click", () => {
+    button.dispatchEvent(
+      new CustomEvent("hass-action", {
+        detail: { config: { entity: entityId, tap_action: tapAction }, action: "tap" },
+        bubbles: true,
+        composed: true,
+      }),
+    );
+  });
+  return button;
+}
+
+// Namnet och det Typen visar eller orsaken, med en stapel för Förlopp. first och second är
+// texterna i ordning.
 function textParts(parent) {
   const first = document.createElement("b");
   const second = document.createElement("small");
@@ -162,84 +204,110 @@ function textParts(parent) {
   };
 }
 
-// Larm, Problem och Pågår: ett eget kort per notis, med namnet över det Typen visar.
+// Tryckytan som öppnar detaljdialogen, med ikonen först.
+function headElement() {
+  const head = document.createElement("div");
+  head.className = "head";
+  const icon = document.createElement("ha-icon");
+  head.append(icon);
+  return { head, icon, moreInfo: moreInfoPart(head) };
+}
+
+// Larm, Problem och Pågår: ett eget kort per notis, med namnet över det Typen visar eller
+// orsaken, och åtgärderna under.
 function noticeElement(level) {
   const el = document.createElement("ha-card");
   el.className = `notice ${level}`;
-  const icon = document.createElement("ha-icon");
+  const { head, icon, moreInfo } = headElement();
   const body = document.createElement("span");
-  el.append(icon, body);
+  head.append(body);
+  const actions = actionsPart();
+  el.append(head, actions.el);
   const texts = textParts(body);
-  const moreInfo = moreInfoPart(el);
   return {
     el,
     update: (row) => {
       setIcon(icon, row.icon);
       texts(row.name, row.text, row.fraction);
       moreInfo(row.moreInfo);
+      actions.update(row.id, row.actions);
     },
   };
 }
 
-// Blick och Tyst: en rad. Ett Värde står före namnet, annars står namnet först.
+// Blick och Tyst: en rad med åtgärderna sist. Ett Värde utan orsak står före namnet, annars
+// står namnet först.
 function rowElement(level) {
   const el = document.createElement("div");
   el.className = level;
-  const icon = document.createElement("ha-icon");
-  el.append(icon);
-  const texts = textParts(el);
-  const moreInfo = moreInfoPart(el);
+  const { head, icon, moreInfo } = headElement();
+  const actions = actionsPart();
+  el.append(head, actions.el);
+  const texts = textParts(head);
   return {
     el,
     update: (row) => {
       setIcon(icon, row.icon);
-      const [first, second] = row.type === "value" ? [row.text, row.name] : [row.name, row.text];
+      const [first, second] = row.valueFirst ? [row.text, row.name] : [row.name, row.text];
       texts(first, second, row.fraction);
       moreInfo(row.moreInfo);
+      actions.update(row.id, row.actions);
     },
   };
 }
 
-// Det inbäddade kortet sist i parent, utbytt bara när det är ett annat kortelement.
-function embeddedPart(parent) {
+// Det inbäddade kortet i parent före next, utbytt bara när det är ett annat kortelement.
+function embeddedPart(parent, next) {
   let current = null;
   return (embedded) => {
     const [card = null] = embedded;
     if (card === current) return;
     current?.remove();
-    if (card) parent.append(card);
+    if (card) parent.insertBefore(card, next);
     current = card;
   };
 }
 
-// Eget kort på Larm, Problem och Pågår: ikonen och namnet över det inbäddade kortet.
-// embeddedFor ger det inbäddade kortet för en notis.
+// Eget kort på Larm, Problem och Pågår: ikonen, namnet och orsaken över det inbäddade kortet,
+// och åtgärderna under. Ett tryck på huvudet öppnar detaljdialogen; det inbäddade kortet
+// hanterar sina egna tryck. embeddedFor ger det inbäddade kortet för en notis.
 function customNoticeElement(level, embeddedFor) {
   const el = document.createElement("ha-card");
   el.className = `notice ${level} custom`;
-  const head = document.createElement("div");
-  head.className = "head";
-  const icon = document.createElement("ha-icon");
+  const { head, icon, moreInfo } = headElement();
   const name = document.createElement("b");
-  head.append(icon, name);
-  el.append(head);
-  const embedded = embeddedPart(el);
+  const reason = document.createElement("small");
+  head.append(name, reason);
+  const actions = actionsPart();
+  el.append(head, actions.el);
+  const embedded = embeddedPart(el, actions.el);
   return {
     el,
     update: (row) => {
       setIcon(icon, row.icon);
       setText(name, row.name);
+      setText(reason, row.text);
       embedded(embeddedFor(row));
+      moreInfo(row.moreInfo);
+      actions.update(row.id, row.actions);
     },
   };
 }
 
-// Eget kort på Blick och Tyst: det inbäddade kortet som en rad.
+// Eget kort på Blick och Tyst: det inbäddade kortet som en rad, med åtgärderna under.
 function customRowElement(level, embeddedFor) {
   const el = document.createElement("div");
   el.className = `${level} custom`;
-  const embedded = embeddedPart(el);
-  return { el, update: (row) => embedded(embeddedFor(row)) };
+  const actions = actionsPart();
+  el.append(actions.el);
+  const embedded = embeddedPart(el, actions.el);
+  return {
+    el,
+    update: (row) => {
+      embedded(embeddedFor(row));
+      actions.update(row.id, row.actions);
+    },
+  };
 }
 
 // Hur en notis byggs: som eget kort (notice) eller som rad (row), med ett inbäddat kort för

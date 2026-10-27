@@ -129,6 +129,27 @@
           "data_description": {
             "hide": "Regeln är dold när villkoret gäller, oavsett nivåvillkoren."
           }
+        },
+        "reason": {
+          "title": "Orsak",
+          "description": "Orsaken säger varför notisen visas och står under namnet på kortet. Välj en färdig mall eller skriv en egen template. Ett nytt val visar först sin förhandsvisning; skicka igen för att gå vidare.\n\nFörhandsvisning: **{preview}**",
+          "data": {
+            "reason": "Orsak",
+            "reason_template": "Egen template"
+          },
+          "data_description": {
+            "reason_template": "Används med «Egen template…». Templaten kan läsa entity (entiteten som notisen visar), entities, state_since (när tillståndet började, för Status) och occurrences (tillfällena, för Kommande)."
+          }
+        },
+        "actions": {
+          "title": "Åtgärder",
+          "description": "Åtgärderna blir knappar på notisen som anropar en tjänst, till exempel att starta om dammsugaren. Med en bekräftelsetext frågar kortet först.",
+          "data": {
+            "actions": "Åtgärder"
+          },
+          "data_description": {
+            "actions": "Varje åtgärd är ett tjänsteanrop utan templates."
+          }
         }
       },
       "error": {
@@ -138,7 +159,9 @@
         "invalid_condition": "Villkoret är ogiltigt.",
         "progress_entity": "Välj en timer, en sensor med en sluttid eller med tid kvar, eller en sensor i procent.",
         "entities_required": "Välj minst en kalender eller sensor.",
-        "invalid_card": "Ange en kortkonfiguration med type, till exempel type: weather-forecast."
+        "invalid_card": "Ange en kortkonfiguration med type, till exempel type: weather-forecast.",
+        "template_required": "Skriv en template, eller välj en färdig mall.",
+        "invalid_action": "Varje åtgärd behöver en knapptext och precis ett tjänsteanrop utan templates, med tjänsten under action (inte service)."
       },
       "abort": {
         "reconfigure_successful": "Regeln har ändrats."
@@ -161,6 +184,30 @@
         "always": "Alltid",
         "condition": "Villkor"
       }
+    },
+    "reason": {
+      "options": {
+        "none": "Ingen (kortet visar det typen visar)",
+        "state_for": "Tillstånd och hur länge, till exempel «Öppen i 10 min»",
+        "time_left": "Tid kvar, till exempel «40 min kvar»",
+        "value": "Värdet, till exempel «52 %»",
+        "next": "Nästa tillfälle, till exempel «Nästa: Sophämtning»",
+        "custom": "Egen template…"
+      }
+    },
+    "actions": {
+      "fields": {
+        "name": {
+          "name": "Knapptext"
+        },
+        "action": {
+          "name": "Tjänsteanrop"
+        },
+        "confirmation": {
+          "name": "Bekräftelsetext",
+          "description": "Valfri. Kortet frågar med texten innan tjänsten anropas."
+        }
+      }
     }
   },
   "entity": {
@@ -176,5 +223,15 @@
         }
       }
     }
+  },
+  "reason": {
+    "state_for": "{state} i {duration}",
+    "time_left": "{duration} kvar",
+    "next": "Nästa: {next}",
+    "minutes": "{count} min",
+    "hours": "{count} tim",
+    "days": "{count} d",
+    "unavailable": "Otillgänglig",
+    "unknown": "Okänd"
   }
 }

@@ -18,6 +18,21 @@ import {
 
 const BILEN = value("sensor.bilen_batteri", "52", "%");
 const ELPRIS = value("sensor.elpris", "42", "öre/kWh");
+// Åtgärder som en regel kan ha, som i attributet actions.
+const RESTART = {
+  name: "Starta om",
+  action: "button.press",
+  target: { entity_id: "button.findus_restart" },
+  data: {},
+  confirmation: "Starta om Findus?",
+};
+const DOCK = {
+  name: "Docka",
+  action: "vacuum.return_to_base",
+  target: { entity_id: "vacuum.findus" },
+  data: { fan_speed: "quiet" },
+  confirmation: null,
+};
 
 test("en Blick-notis av typen Värde ritas som en större rad med ikon, värde och namn", () => {
   const root = renderCard(fakeHass({ notices: [notice("value_glance")], values: [BILEN] }));
@@ -195,7 +210,7 @@ test("notiser av en Typ som kortet inte känner till ritas inte som Värde", () 
   assert.equal(root.querySelectorAll(".glance, .quiet").length, 0);
 });
 
-const FINDUS = status("vacuum.findus", "Ej tillgänglig", 3 * 60);
+const FINDUS = status("vacuum.findus", "Otillgänglig", 3 * 60);
 const DORREN = status("binary_sensor.ytterdorr", "Öppen", 10);
 const TVATTEN = status("sensor.tvattmaskin", "Kör", 25);
 
@@ -216,7 +231,7 @@ test("Larm, Problem och Pågår ritas som egna kort i den ordningen, över Blick
   assert.deepEqual(
     parts.map((el) => [el.className, text(el)]),
     [
-      ["notice alarm", "Findus Ej tillgänglig i 3 tim"],
+      ["notice alarm", "Findus Otillgänglig i 3 tim"],
       ["notice problem", "Ytterdörren Öppen i 10 min"],
       ["notice ongoing", "Tvätten Kör i 25 min"],
       ["glance", "52 % Bilen"],
@@ -562,7 +577,7 @@ test("tryck eller Enter på Status för en grupp öppnar HA:s detaljdialog för 
   const opened = [];
   root.host.addEventListener("hass-more-info", (event) => opened.push(event.detail.entityId));
 
-  const row = root.querySelector(".glance");
+  const row = root.querySelector(".glance .head");
   row.click();
   row.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
 
@@ -641,10 +656,10 @@ test("en ny hass skapar inga element igen medan Förloppets stapel följer tiden
     device_class: "timestamp",
   });
   const notices = [
-    DISKEN,
-    notice("value_glance"),
+    { ...DISKEN, attributes: { ...DISKEN.attributes, actions: [DOCK] } },
+    notice("value_glance", { attributes: { actions: [RESTART] } }),
     notice("upcoming_quiet"),
-    notice("custom_glance"),
+    notice("custom_glance", { attributes: { actions: [DOCK] } }),
   ];
   const hass = fakeHass({ notices, values: [klar, BILEN] });
   const root = renderCard(hass);
@@ -702,22 +717,16 @@ test("en notis som byter nivå ritas bara på sin nya nivå", () => {
   assert.deepEqual(shown(), ["Allt är lugnt hemma.", "52 % Bilen"]);
 });
 
-test("en stapel och ett tryck som inte gäller längre tas bort från notisen", () => {
+test("en stapel som inte gäller längre tas bort från notisen", () => {
   const procent = entity("sensor.diskmaskin_klar", "62", { unit_of_measurement: "%" });
-  const notices = [DISKEN, notice("status_group_ongoing", { state: "glance" })];
-  const groups = [fonster()];
-  const root = renderCard(fakeHass({ notices, values: [procent, ...WINDOWS], groups }));
+  const root = renderCard(fakeHass({ notices: [DISKEN], values: [procent] }));
   assert.equal(bar(root.querySelector(".notice")), 62);
-  assert.equal(root.querySelector(".glance").getAttribute("role"), "button");
 
-  // Utan procent har Förloppet ingen stapel, och fönstren är inte längre en grupp.
+  // Utan procent har Förloppet ingen stapel.
   const okand = entity("sensor.diskmaskin_klar", "okänt", { unit_of_measurement: "%" });
-  root.host.hass = fakeHass({ notices, values: [okand, ...WINDOWS, fonster()] });
+  root.host.hass = fakeHass({ notices: [DISKEN], values: [okand] });
 
   assert.equal(bar(root.querySelector(".notice")), null);
-  const row = root.querySelector(".glance");
-  assert.equal(row.getAttribute("role"), null);
-  assert.equal(row.getAttribute("tabindex"), null);
 });
 
 test("element som står kvar flyttas inte när en notis före dem försvinner", async () => {
@@ -731,4 +740,191 @@ test("element som står kvar flyttas inte när en notis före dem försvinner", 
   assert.equal(root.querySelector(".notice"), null);
   assert.ok(root.querySelector(".glance hui-test-card"));
   assert.equal(cardHelpers.connected, connected, "det inbäddade kortet kopplades in igen");
+});
+
+// Det som kortet ber HA göra: händelsen hass-action, som HA hanterar som en knapp i Lovelace.
+function performed(root) {
+  const actions = [];
+  root.host.addEventListener("hass-action", (event) => actions.push(event.detail));
+  return actions;
+}
+
+function opened(root) {
+  const entities = [];
+  root.host.addEventListener("hass-more-info", (event) => entities.push(event.detail.entityId));
+  return entities;
+}
+
+test("en notis med en orsak visar orsaken under namnet i stället för det Typen visar", () => {
+  const root = renderCard(
+    fakeHass({
+      notices: [
+        held("status_problem", 10, { attributes: { reason: "Öppen sedan 20:02" } }),
+        notice("value_glance", { attributes: { reason: "Laddar, 52 av 80 %" } }),
+        notice("value_quiet"),
+      ],
+      values: [DORREN, BILEN, ELPRIS],
+    }),
+  );
+
+  assert.equal(text(root.querySelector(".notice.problem")), "Ytterdörren Öppen sedan 20:02");
+  assert.deepEqual([...root.querySelectorAll(".glance, .quiet")].map(text), [
+    "Bilen Laddar, 52 av 80 %",
+    "42 öre/kWh Elpris",
+  ]);
+});
+
+test("Förlopp med en orsak behåller sin stapel", () => {
+  const procent = entity("sensor.diskmaskin_klar", "62", { unit_of_measurement: "%" });
+  const disken = notice("progress_ongoing", { attributes: { reason: "Torkar" } });
+  const root = renderCard(fakeHass({ notices: [disken], values: [procent] }));
+
+  const card = root.querySelector(".notice");
+  assert.equal(text(card), "Diskmaskinen Torkar");
+  assert.equal(bar(card), 62);
+});
+
+test("åtgärderna blir knappar, och ett tryck ber HA anropa tjänsten och fråga med bekräftelsetexten först", () => {
+  const findus = held("status_problem", 10, { attributes: { actions: [RESTART, DOCK] } });
+  const root = renderCard(fakeHass({ notices: [findus], values: [DORREN] }));
+  const actions = performed(root);
+  const dialogs = opened(root);
+
+  const buttons = [...root.querySelectorAll(".notice button")];
+  assert.deepEqual(buttons.map(text), ["Starta om", "Docka"]);
+  buttons[0].click();
+  buttons[1].click();
+
+  assert.deepEqual(actions, [
+    {
+      config: {
+        entity: "sensor.attention_span_ytterdorren",
+        tap_action: {
+          action: "perform-action",
+          perform_action: "button.press",
+          target: { entity_id: "button.findus_restart" },
+          data: {},
+          confirmation: { text: "Starta om Findus?" },
+        },
+      },
+      action: "tap",
+    },
+    {
+      config: {
+        entity: "sensor.attention_span_ytterdorren",
+        tap_action: {
+          action: "perform-action",
+          perform_action: "vacuum.return_to_base",
+          target: { entity_id: "vacuum.findus" },
+          data: { fan_speed: "quiet" },
+        },
+      },
+      action: "tap",
+    },
+  ]);
+  assert.deepEqual(dialogs, [], "ett tryck på en knapp öppnade detaljdialogen");
+});
+
+test("åtgärder finns på varje nivå, också på Blick och Tyst", () => {
+  const bilen = notice("value_glance", { attributes: { actions: [DOCK] } });
+  const elpris = notice("value_quiet", { attributes: { actions: [RESTART] } });
+  const root = renderCard(fakeHass({ notices: [bilen, elpris], values: [BILEN, ELPRIS] }));
+
+  assert.deepEqual([...root.querySelectorAll(".glance button, .quiet button")].map(text), [
+    "Docka",
+    "Starta om",
+  ]);
+});
+
+test("Enter på en knapp utför åtgärden och öppnar inte detaljdialogen", () => {
+  const findus = held("status_problem", 10, { attributes: { actions: [DOCK] } });
+  const root = renderCard(fakeHass({ notices: [findus], values: [DORREN] }));
+  const dialogs = opened(root);
+
+  const button = root.querySelector(".notice button");
+  button.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+
+  assert.deepEqual(dialogs, []);
+});
+
+test("åtgärder som inte är ett tjänsteanrop ritas inte", () => {
+  const broken = [{ name: "Trasig" }, { name: "", action: "button.press" }, null, DOCK];
+  const findus = held("status_problem", 10, { attributes: { actions: broken } });
+  const root = renderCard(fakeHass({ notices: [findus], values: [DORREN] }));
+
+  assert.deepEqual([...root.querySelectorAll(".notice button")].map(text), ["Docka"]);
+});
+
+test("tryck eller Enter på en notis öppnar HA:s detaljdialog för entiteten den visar", async () => {
+  const root = renderCard(
+    fakeHass({
+      notices: [held("status_problem", 10), notice("value_glance"), notice("custom_glance", { state: "ongoing" })],
+      values: [DORREN, BILEN],
+    }),
+  );
+  await settled();
+  const dialogs = opened(root);
+
+  const problem = root.querySelector(".notice.problem .head");
+  problem.click();
+  root.querySelector(".glance .head").dispatchEvent(
+    new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+  );
+  // Eget kort visar inga egna entiteter, så dess huvud öppnar notisens entitet.
+  root.querySelector(".notice.custom .head").click();
+  root.querySelector(".notice.custom hui-test-card").click();
+
+  assert.deepEqual(dialogs, [
+    "binary_sensor.ytterdorr",
+    "sensor.bilen_batteri",
+    "sensor.attention_span_vadret",
+  ]);
+  assert.equal(problem.getAttribute("role"), "button");
+});
+
+test("knapparna ligger utanför notisens tryckyta, så att ingen knapp ligger i en annan", () => {
+  const findus = held("status_problem", 10, { attributes: { actions: [DOCK] } });
+  const bilen = notice("value_glance", { attributes: { actions: [RESTART] } });
+  const root = renderCard(fakeHass({ notices: [findus, bilen], values: [DORREN, BILEN] }));
+
+  for (const button of root.querySelectorAll("button")) {
+    assert.equal(button.closest('[role="button"]'), null, text(button));
+  }
+});
+
+test("en ny hass skapar inte knapparna igen, men ändrade åtgärder byter dem", () => {
+  const findus = held("status_problem", 10, { attributes: { actions: [RESTART] } });
+  const hass = fakeHass({ notices: [findus], values: [DORREN] });
+  const root = renderCard(hass);
+  const [button] = root.querySelectorAll(".notice button");
+
+  const kok = { entity_id: "light.kok", state: "on", attributes: {} };
+  root.host.hass = { ...hass, states: { ...hass.states, [kok.entity_id]: kok } };
+  const moved = held("status_problem", 11, { attributes: { actions: [RESTART] } });
+  root.host.hass = fakeHass({ notices: [moved], values: [DORREN] });
+  assert.ok(root.querySelector(".notice button") === button, "knappen skapades om");
+
+  const changed = held("status_problem", 11, { attributes: { actions: [DOCK, RESTART] } });
+  root.host.hass = fakeHass({ notices: [changed], values: [DORREN] });
+  assert.deepEqual([...root.querySelectorAll(".notice button")].map(text), ["Docka", "Starta om"]);
+});
+
+test("en notis med orsak och en åtgärd med bekräftelse ritas som i det delade exemplet", () => {
+  const frysdorr = status("binary_sensor.frysdorr", "Öppen", 10);
+  const root = renderCard(
+    fakeHass({ notices: [notice("status_problem_reason_actions")], values: [frysdorr] }),
+  );
+  const actions = performed(root);
+
+  assert.equal(text(root.querySelector(".notice.problem .head")), "Frysen Dörren står öppen");
+  const [button] = root.querySelectorAll(".notice.problem button");
+  assert.equal(text(button), "Tysta larmet");
+  button.click();
+  assert.deepEqual(actions[0].config.tap_action, {
+    action: "perform-action",
+    perform_action: "siren.turn_off",
+    target: { entity_id: "siren.frysen" },
+    data: {},
+    confirmation: { text: "Tysta frysens larm?" },
+  });
 });

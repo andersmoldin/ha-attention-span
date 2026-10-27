@@ -169,7 +169,6 @@ function members(hass, shown) {
 }
 
 // Det notisens Typ visar: en text och, för Förlopp, hur långt det har kommit (fraction, 0–1).
-// moreInfo är entiteten som ett tryck visar i HA:s detaljdialog.
 function content(hass, attributes, now) {
   if (attributes.type === "upcoming") return upcoming(hass, attributes.occurrences, now);
   // Eget kort visar sin kortkonfiguration i stället för en text.
@@ -183,8 +182,7 @@ function content(hass, attributes, now) {
   const group = members(hass, shown);
   if (group) {
     const count = group.filter((id) => hass.states[id]?.state === shown.state).length;
-    const text = strings(hass).group(state, count, group.length);
-    return { text, moreInfo: shown.entity_id };
+    return { text: strings(hass).group(state, count, group.length) };
   }
   // Regeln vet när tillståndet började, också över en omstart av HA, som sätter om
   // entitetens last_changed. Innan HA har startat vet den det inte än.
@@ -192,18 +190,45 @@ function content(hass, attributes, now) {
   return { text: strings(hass).status(state, duration(now - Date.parse(since), language(hass))) };
 }
 
+const isObject = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
+
+// Åtgärderna som kortet kan visa som knappar: en knapptext och ett tjänsteanrop, «domän.tjänst».
+// Andra hoppas över, så att en trasig åtgärd inte tar de andra med sig.
+function actions(list) {
+  return (Array.isArray(list) ? list : [])
+    .filter(
+      (action) =>
+        typeof action?.name === "string" &&
+        action.name.trim() &&
+        /^[a-z0-9_]+\.[a-z0-9_]+$/.test(action.action ?? ""),
+    )
+    .map((action) => ({
+      name: action.name,
+      action: action.action,
+      target: isObject(action.target) ? action.target : {},
+      data: isObject(action.data) ? action.data : {},
+      confirmation: typeof action.confirmation === "string" ? action.confirmation : null,
+    }));
+}
+
+// En notis som kortet ritar. text är orsaken när regeln har en, annars det Typen visar; ett
+// Värde utan orsak står före namnet på Blick och Tyst (valueFirst). moreInfo är entiteten som
+// ett tryck visar i HA:s detaljdialog: den första som notisen visar, annars notisen själv.
 function row(hass, stateObj, now) {
   const a = stateObj.attributes;
-  const { text, fraction = null, moreInfo = null } = content(hass, a, now);
+  const { text, fraction = null } = content(hass, a, now);
+  const reason = typeof a.reason === "string" && a.reason ? a.reason : null;
   return {
     id: stateObj.entity_id,
     name: a.friendly_name ?? stateObj.entity_id,
     icon: a.icon ?? null,
     type: a.type,
-    text,
+    text: reason ?? text,
+    valueFirst: a.type === "value" && !reason,
     fraction,
     card: a.type === "custom" ? a.card : null,
-    moreInfo,
+    moreInfo: a.entities?.[0] ?? stateObj.entity_id,
+    actions: actions(a.actions),
   };
 }
 

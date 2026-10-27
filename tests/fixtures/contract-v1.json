@@ -10,6 +10,7 @@
       "priority": 1,
       "reason": null,
       "entities": ["sensor.bilen_batteri"],
+      "actions": [],
       "since": "2026-10-26T08:00:00+00:00",
       "device_class": "enum",
       "icon": "mdi:car",
@@ -27,6 +28,7 @@
       "priority": 2,
       "reason": null,
       "entities": ["sensor.elpris"],
+      "actions": [],
       "since": "2026-10-26T08:00:00+00:00",
       "device_class": "enum",
       "icon": "mdi:flash",
@@ -44,6 +46,7 @@
       "priority": 1,
       "reason": null,
       "entities": ["vacuum.findus"],
+      "actions": [],
       "since": "2026-10-26T08:00:00+00:00",
       "state_since": "2026-10-26T05:00:00+00:00",
       "device_class": "enum",
@@ -62,6 +65,7 @@
       "priority": 2,
       "reason": null,
       "entities": ["binary_sensor.ytterdorr"],
+      "actions": [],
       "since": "2026-10-26T08:00:00+00:00",
       "state_since": "2026-10-26T07:50:00+00:00",
       "device_class": "enum",
@@ -80,6 +84,7 @@
       "priority": 3,
       "reason": null,
       "entities": ["sensor.tvattmaskin"],
+      "actions": [],
       "since": "2026-10-26T08:00:00+00:00",
       "state_since": "2026-10-26T07:50:00+00:00",
       "device_class": "enum",
@@ -98,6 +103,7 @@
       "priority": 1,
       "reason": null,
       "entities": ["sensor.diskmaskin_klar"],
+      "actions": [],
       "since": "2026-10-26T08:00:00+00:00",
       "device_class": "enum",
       "icon": "mdi:dishwasher",
@@ -115,6 +121,7 @@
       "priority": 1,
       "reason": null,
       "entities": ["calendar.sophamtning"],
+      "actions": [],
       "occurrences": [
         {
           "start": "2026-10-27T06:30:00+01:00",
@@ -140,6 +147,7 @@
       "priority": 1,
       "reason": null,
       "entities": [],
+      "actions": [],
       "card": { "type": "weather-forecast", "entity": "weather.hemma", "show_forecast": false },
       "since": "2026-10-26T08:00:00+00:00",
       "device_class": "enum",
@@ -158,11 +166,39 @@
       "priority": 1,
       "reason": null,
       "entities": ["binary_sensor.fonster"],
+      "actions": [],
       "since": "2026-10-26T08:00:00+00:00",
       "state_since": "2026-10-26T08:00:00+00:00",
       "device_class": "enum",
       "icon": "mdi:window-open-variant",
       "friendly_name": "Fönster"
+    }
+  },
+  "status_problem_reason_actions": {
+    "entity_id": "sensor.attention_span_frysen",
+    "state": "problem",
+    "attributes": {
+      "options": ["alarm", "problem", "ongoing", "glance", "quiet", "hidden"],
+      "contract": 1,
+      "source": "rule",
+      "type": "status",
+      "priority": 1,
+      "reason": "Dörren står öppen",
+      "entities": ["binary_sensor.frysdorr"],
+      "actions": [
+        {
+          "name": "Tysta larmet",
+          "action": "siren.turn_off",
+          "target": { "entity_id": "siren.frysen" },
+          "data": {},
+          "confirmation": "Tysta frysens larm?"
+        }
+      ],
+      "since": "2026-10-26T08:00:00+00:00",
+      "state_since": "2026-10-26T07:50:00+00:00",
+      "device_class": "enum",
+      "icon": "mdi:fridge",
+      "friendly_name": "Frysen"
     }
   }
 }

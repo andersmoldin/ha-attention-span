@@ -12,14 +12,27 @@ from .conftest import (
     BILEN,
     add_integration,
     add_rule,
+    level_modes,
     start_rule,
     start_rule_reconfigure,
+    submit_reason,
 )
 
 UPCOMING = {"name": "Buss", "entities": ["sensor.buss_nasta"], "count": 3}
+PROGRESS = {"name": "Disk", "entity": "sensor.disk_kvar"}
 CUSTOM = {"name": "Vädret", "card": {"type": "weather-forecast", "entity": "weather.hemma"}}
 
 TRANSLATIONS = pathlib.Path(__file__).parents[1] / "custom_components" / DOMAIN / "translations"
+
+
+async def reach_reason(hass: HomeAssistant, entry, rule_type: str, fields: dict):
+    """Fyll i en regel av Typen fram till orsaken."""
+    result = await start_rule(hass, entry, rule_type)
+    result = await hass.config_entries.subentries.async_configure(result["flow_id"], fields)
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], level_modes({"glance": "always"})
+    )
+    return await hass.config_entries.subentries.async_configure(result["flow_id"], {})
 
 
 def _flatten(tree: dict, prefix: str = "") -> dict[str, str]:
@@ -40,7 +53,10 @@ def _form_keys(prefix: str, result) -> set[str]:
         keys.add(f"{step}.data.{field}")
         config = getattr(selector, "config", {})
         if translation_key := config.get("translation_key"):
-            keys |= {f"selector.{translation_key}.options.{o}" for o in config["options"]}
+            keys |= {f"selector.{translation_key}.options.{o}" for o in config.get("options", [])}
+            keys |= {
+                f"selector.{translation_key}.fields.{f}.name" for f in config.get("fields", {})
+            }
     return keys
 
 
@@ -81,6 +97,37 @@ async def _shown_keys(hass: HomeAssistant) -> set[str]:
     keys |= _form_keys(rule, result) | {
         f"{rule}.error.condition_required",
         f"{rule}.error.invalid_condition",
+    }
+
+    # Orsaken med valen för varje Typ, och åtgärderna.
+    hass.states.async_set("sensor.disk_kvar", "40", {"device_class": "duration"})
+    for rule_type, fields in (
+        ("status", BILEN),
+        ("progress", PROGRESS),
+        ("value", BILEN),
+        ("upcoming", UPCOMING),
+        ("custom", CUSTOM),
+    ):
+        result = await reach_reason(hass, entry, rule_type, fields)
+        keys |= _form_keys(rule, result)
+    result = await submit_reason(hass, result, {"reason": "none"})
+    keys |= _form_keys(rule, result) | {
+        f"{rule}.error.template_required",
+        f"{rule}.error.invalid_action",
+    }
+    # Orden i de färdiga mallarna för orsaken.
+    keys |= {
+        f"reason.{word}"
+        for word in (
+            "state_for",
+            "time_left",
+            "next",
+            "minutes",
+            "hours",
+            "days",
+            "unavailable",
+            "unknown",
+        )
     }
 
     subentry_id = await add_rule(hass, entry, "value", BILEN, ALWAYS_GLANCE)

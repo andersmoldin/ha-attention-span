@@ -24,6 +24,12 @@ TYPES: Final = (TYPE_STATUS, TYPE_PROGRESS, TYPE_VALUE, TYPE_UPCOMING, TYPE_CUST
 CONF_COUNT: Final = "count"
 # Lovelace-kortkonfigurationen som Typen Eget kort visar.
 CONF_CARD: Final = "card"
+# Orsaken: en färdig mall för Typen eller «custom», med templaten i CONF_REASON_TEMPLATE.
+# Saknas den har regeln ingen orsak.
+CONF_REASON: Final = "reason"
+CONF_REASON_TEMPLATE: Final = "reason_template"
+# Åtgärderna: tjänsteanrop som kortet visar som knappar.
+CONF_ACTIONS: Final = "actions"
 
 # Nivåerna, den allvarligaste först (ADR 0002).
 LEVELS: Final = ("alarm", "problem", "ongoing", "glance", "quiet")
