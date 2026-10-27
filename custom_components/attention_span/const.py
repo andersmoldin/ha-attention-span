@@ -52,4 +52,5 @@ ALWAYS: Final = "always"
 CONTRACT_VERSION: Final = 1
 SOURCE_RULE: Final = "rule"
 
+# Tjänsten som kvitterar ett Larm för hela hushållet.
 SERVICE_ACKNOWLEDGE: Final = "acknowledge"

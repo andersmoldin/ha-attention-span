@@ -83,9 +83,9 @@ async def test_changing_a_rule_shows_its_levels_and_conditions_as_written(hass: 
 
     result = await start_rule_reconfigure(hass, entry, rule)
     result = await submit(hass, result, YTTERDORREN)
-    assert {str(key): key.default() for key in result["data_schema"].schema} == level_modes(
-        {"ongoing": "condition", "quiet": "always"}
-    )
+    assert {
+        str(key): key.default() for key in result["data_schema"].schema
+    } == level_modes({"ongoing": "condition", "quiet": "always"})
     result = await submit(hass, result, level_modes({"ongoing": "condition", "quiet": "always"}))
 
     assert result["step_id"] == "conditions"
@@ -130,7 +130,9 @@ async def test_the_reason_offers_the_presets_of_the_type_and_an_own_template(
     assert reason_options(result) == options
 
 
-async def test_a_new_choice_shows_its_preview_before_the_flow_goes_on(hass: HomeAssistant, freezer):
+async def test_a_new_choice_shows_its_preview_before_the_flow_goes_on(
+    hass: HomeAssistant, freezer
+):
     freezer.move_to("2026-10-26T08:00:00+00:00")
     hass.states.async_set("sensor.bilen", "52", {"unit_of_measurement": "%"})
     entry = await add_integration(hass)

@@ -1,6 +1,6 @@
 // Räknar fram vad AttentionSpan-kortet ska visa ur hass. Ingen DOM här.
 
-const DOMAIN = "attention_span";
+export const DOMAIN = "attention_span";
 // Dataformatet kortet är byggt mot. Kortet laddas med integrationens version, så ett
 // annat värde betyder att kort och integration inte hör ihop; sådana notiser läses inte.
 const CONTRACT = 1;
@@ -267,8 +267,7 @@ function row(hass, stateObj, now) {
 // Okvitterade Larm före kvitterade, sedan regelns ordningstal, lägst först; entitets-id avgör
 // mellan lika tal. Tillgänglighet saknar ordningstal och kommer före reglerna.
 function byNoticeOrder(a, b) {
-  const known = isAcknowledged(a) - isAcknowledged(b);
-  if (known !== 0) return known;
+  if (isAcknowledged(a) !== isAcknowledged(b)) return isAcknowledged(a) ? 1 : -1;
   const pa = a.attributes.priority ?? -Infinity;
   const pb = b.attributes.priority ?? -Infinity;
   if (pa !== pb) return pa < pb ? -1 : 1;

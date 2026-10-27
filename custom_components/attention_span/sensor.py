@@ -43,7 +43,7 @@ from .const import (
     TYPE_UPCOMING,
 )
 from .evaluation import RuleLevel
-from .lifecycle import Acknowledgement, flap_limit, realarm_after
+from .lifecycle import Acknowledgement
 from .reason import REASON_NONE, Reason, async_variables, parse_since, reason_source
 from .since import DATA_SINCE, SavedRule, SavedState
 from .upcoming import Occurrence, Upcoming
@@ -105,11 +105,7 @@ class RuleSensor(SensorEntity, RestoreEntity):
         saved = self._store.get(self._rule_id)
         self._shown = saved.get("state")
         self._acknowledgement = Acknowledgement(
-            self.hass,
-            realarm_after(self._rule),
-            flap_limit(self._rule),
-            saved.get("acknowledgement"),
-            self._async_acknowledgement_changed,
+            self.hass, self._rule, saved.get("acknowledgement"), self._async_acknowledgement_changed
         )
         self.async_on_remove(self._acknowledgement.async_unload)
         # Går ett villkor inte att bygga, till exempel för att dess enhet har tagits bort,
@@ -133,9 +129,7 @@ class RuleSensor(SensorEntity, RestoreEntity):
         if stored.get("rule") == self.unique_id:
             self._attr_native_value = stored["level"]
             self._attr_extra_state_attributes["since"] = stored["since"]
-        self._attr_extra_state_attributes.update(
-            self._acknowledgement.attributes(self._attr_native_value)
-        )
+        self._show_acknowledgement()
         self.async_on_remove(
             async_dispatcher_connect(
                 self.hass, SIGNAL_PRIORITY.format(self._rule_id), self._async_priority_changed
@@ -247,25 +241,27 @@ class RuleSensor(SensorEntity, RestoreEntity):
         level = self._evaluation.evaluate()
         self._acknowledgement.async_level(level)
         self._async_save()
-        acknowledgement = self._acknowledgement.attributes(level)
-        attributes = self._attr_extra_state_attributes
-        if level == self._attr_native_value and acknowledgement.items() <= attributes.items():
-            return
-        if level != self._attr_native_value:
+        changed = level != self._attr_native_value
+        if changed:
             self._attr_native_value = level
-            attributes["since"] = dt_util.utcnow().isoformat()
-        attributes.update(acknowledgement)
-        self.async_write_ha_state()
+            self._attr_extra_state_attributes["since"] = dt_util.utcnow().isoformat()
+        if self._show_acknowledgement() or changed:
+            self.async_write_ha_state()
 
     @callback
     def _async_acknowledgement_changed(self) -> None:
-        """Kvitteringen har gått ut medan nivån stod still."""
+        """Larmet har kvitterats, eller kvitteringen har gått ut medan nivån stod still."""
         self._async_save()
+        if self._show_acknowledgement():
+            self.async_write_ha_state()
+
+    def _show_acknowledgement(self) -> bool:
+        """Sätt attributen för kvitteringen på nuvarande nivå, och säg om de ändrades."""
         acknowledgement = self._acknowledgement.attributes(self._attr_native_value)
         if acknowledgement.items() <= self._attr_extra_state_attributes.items():
-            return
+            return False
         self._attr_extra_state_attributes.update(acknowledgement)
-        self.async_write_ha_state()
+        return True
 
     async def async_acknowledge(self) -> None:
         """Tjänsten acknowledge: kvittera Larmet för hela hushållet."""

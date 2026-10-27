@@ -4,7 +4,7 @@
 // Samma version som kortet laddades med, så att en uppdatering inte blandar
 // nytt kort med en gammal cachad card-model.js.
 const versionQuery = new URL(import.meta.url).search;
-const { NEEDS_ATTENTION, cardModel, strings } = await import(`./card-model.js${versionQuery}`);
+const { DOMAIN, NEEDS_ATTENTION, cardModel, strings } = await import(`./card-model.js${versionQuery}`);
 
 // Färger och typsnitt kommer från HA:s tema; storlekar och layout är fasta,
 // så att ett tema ändrar utseendet men inte var saker hamnar.
@@ -238,13 +238,13 @@ function headElement() {
 
 // Larm, Problem och Pågår: ett eget kort per notis, med namnet över det Typen visar eller
 // orsaken, och åtgärderna under. Ett kvitterat Larm är kompakt.
-function noticeElement(level, card) {
+function noticeElement(level, host) {
   const el = document.createElement("ha-card");
   el.className = `notice ${level}`;
   const { head, icon, moreInfo } = headElement();
   const body = document.createElement("span");
   head.append(body);
-  const actions = actionsPart(card.acknowledge);
+  const actions = actionsPart(host.acknowledge);
   el.append(head, actions.el);
   const texts = textParts(body);
   return {
@@ -261,11 +261,11 @@ function noticeElement(level, card) {
 
 // Blick och Tyst: en rad med åtgärderna sist. Ett Värde utan orsak står före namnet, annars
 // står namnet först.
-function rowElement(level, card) {
+function rowElement(level, host) {
   const el = document.createElement("div");
   el.className = level;
   const { head, icon, moreInfo } = headElement();
-  const actions = actionsPart(card.acknowledge);
+  const actions = actionsPart(host.acknowledge);
   el.append(head, actions.el);
   const texts = textParts(head);
   return {
@@ -294,15 +294,15 @@ function embeddedPart(parent, next) {
 
 // Eget kort på Larm, Problem och Pågår: ikonen, namnet och orsaken över det inbäddade kortet,
 // och åtgärderna under. Ett tryck på huvudet öppnar detaljdialogen; det inbäddade kortet
-// hanterar sina egna tryck. card.embedded ger det inbäddade kortet för en notis.
-function customNoticeElement(level, card) {
+// hanterar sina egna tryck. host.embedded ger det inbäddade kortet för en notis.
+function customNoticeElement(level, host) {
   const el = document.createElement("ha-card");
   el.className = `notice ${level} custom`;
   const { head, icon, moreInfo } = headElement();
   const name = document.createElement("b");
   const reason = document.createElement("small");
   head.append(name, reason);
-  const actions = actionsPart(card.acknowledge);
+  const actions = actionsPart(host.acknowledge);
   el.append(head, actions.el);
   const embedded = embeddedPart(el, actions.el);
   return {
@@ -312,7 +312,7 @@ function customNoticeElement(level, card) {
       setIcon(icon, row.icon);
       setText(name, row.name);
       setText(reason, row.text);
-      embedded(card.embedded(row));
+      embedded(host.embedded(row));
       moreInfo(row.moreInfo);
       actions.update(row, text);
     },
@@ -320,16 +320,16 @@ function customNoticeElement(level, card) {
 }
 
 // Eget kort på Blick och Tyst: det inbäddade kortet som en rad, med åtgärderna under.
-function customRowElement(level, card) {
+function customRowElement(level, host) {
   const el = document.createElement("div");
   el.className = `${level} custom`;
-  const actions = actionsPart(card.acknowledge);
+  const actions = actionsPart(host.acknowledge);
   el.append(actions.el);
   const embedded = embeddedPart(el, actions.el);
   return {
     el,
     update: (row, text) => {
-      embedded(card.embedded(row));
+      embedded(host.embedded(row));
       actions.update(row, text);
     },
   };
@@ -352,7 +352,8 @@ const MORE = {
 };
 
 // Hur en notis byggs: som eget kort (notice) eller som rad (row), med ett inbäddat kort för
-// Eget kort och annars med text. Varje sätt får nivån och kortets embedded och acknowledge.
+// Eget kort och annars med text. Varje sätt får nivån och host: AttentionSpan-kortets
+// embedded och acknowledge.
 const ELEMENTS = {
   notice: { custom: customNoticeElement, text: noticeElement },
   row: { custom: customRowElement, text: rowElement },
@@ -474,8 +475,11 @@ class AttentionSpanCard extends HTMLElement {
   }
 
   // Kvittera Larmet för hela hushållet. Kortet ritas om när HA skickar Larmets nya tillstånd.
+  // Går det inte, till exempel för att Larmet just har släppt, visar HA felet själv.
   _acknowledge(entityId) {
-    this._hass.callService("attention_span", "acknowledge", {}, { entity_id: entityId });
+    this._hass
+      .callService(DOMAIN, "acknowledge", {}, { entity_id: entityId })
+      .catch(() => {});
   }
 
   // Det inbäddade kortet för ett Eget kort, återanvänt så länge konfigurationen är densamma.

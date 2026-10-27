@@ -23,7 +23,7 @@ DEFAULT_REALARM_AFTER = timedelta(hours=24)
 DEFAULT_FLAP_LIMIT = timedelta(minutes=5)
 
 
-def realarm_after(rule: Mapping[str, Any]) -> timedelta | None:
+def _realarm_after(rule: Mapping[str, Any]) -> timedelta | None:
     """Hur länge ett kvitterat Larm väntar innan det larmar igen; None för aldrig."""
     if CONF_REALARM_AFTER not in rule:
         return DEFAULT_REALARM_AFTER
@@ -31,7 +31,7 @@ def realarm_after(rule: Mapping[str, Any]) -> timedelta | None:
     return None if value is None else cv.time_period_dict(value)
 
 
-def flap_limit(rule: Mapping[str, Any]) -> timedelta:
+def _flap_limit(rule: Mapping[str, Any]) -> timedelta:
     """Hur länge regeln måste ha varit under nivån innan villkoret räknas som släppt."""
     if CONF_FLAP_LIMIT not in rule:
         return DEFAULT_FLAP_LIMIT
@@ -52,7 +52,7 @@ def _parse(value: str | None) -> datetime | None:
 
 
 class Acknowledgement:
-    """Kvitteringen av en Rules Larm.
+    """Kvitteringen av en Rules Larm, med «larma igen» och fladdergränsen ur regeln.
 
     on_change anropas när kvitteringen har gått ut medan nivån står still, så att regeln kan
     visa det. När den går ut vid en omräkning ser regeln det på attributen.
@@ -61,14 +61,13 @@ class Acknowledgement:
     def __init__(
         self,
         hass: HomeAssistant,
-        realarm: timedelta | None,
-        flap: timedelta,
+        rule: Mapping[str, Any],
         saved: SavedAcknowledgement | None,
         on_change: Callable[[], None],
     ) -> None:
         self._hass = hass
-        self._realarm = realarm
-        self._flap = flap
+        self._realarm = _realarm_after(rule)
+        self._flap = _flap_limit(rule)
         self._on_change = on_change
         self._acknowledged = saved is not None
         self._realarm_at = _parse(saved["realarm_at"]) if saved else None

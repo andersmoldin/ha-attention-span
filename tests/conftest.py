@@ -145,7 +145,7 @@ async def add_rule(
         result["flow_id"], conditions or {}
     )
     result = await submit_placement(hass, result, placement)
-    result = await submit_reason_and_actions(hass, result, reason, actions, timing)
+    result = await submit_reason_actions_and_timing(hass, result, reason, actions, timing)
     assert result["type"] is FlowResultType.CREATE_ENTRY
     await hass.async_block_till_done()
     (added,) = set(entry.subentries) - before
@@ -177,7 +177,7 @@ async def reconfigure_rule(
         result["flow_id"], conditions or {}
     )
     result = await submit_placement(hass, result, placement)
-    result = await submit_reason_and_actions(hass, result, reason, actions, timing)
+    result = await submit_reason_actions_and_timing(hass, result, reason, actions, timing)
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "reconfigure_successful"
     await hass.async_block_till_done()
@@ -207,7 +207,7 @@ async def submit_reason(hass: HomeAssistant, result: FlowResult, reason: dict) -
     return result
 
 
-async def submit_reason_and_actions(
+async def submit_reason_actions_and_timing(
     hass: HomeAssistant,
     result: FlowResult,
     reason: dict | None,
