@@ -1,11 +1,18 @@
 import json
 import pathlib
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 import pytest
-from homeassistant import config_entries
+from homeassistant import config_entries, loader
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import CoreState, HomeAssistant
 from homeassistant.data_entry_flow import FlowResult, FlowResultType
+from homeassistant.helpers import restore_state
+from pytest_homeassistant_custom_component.common import (
+    async_mock_load_restore_state_from_storage,
+    async_test_home_assistant,
+)
 
 from custom_components.attention_span.const import DOMAIN, LEVELS, SUBENTRY_RULE
 
@@ -29,6 +36,38 @@ def contract_example(name: str) -> dict:
 @pytest.fixture(autouse=True)
 def auto_enable_custom_integrations(enable_custom_integrations):
     yield
+
+
+@asynccontextmanager
+async def restart(hass: HomeAssistant) -> AsyncIterator[HomeAssistant]:
+    """Stäng av Home Assistant och starta en ny instans med samma lagring, som vid en omstart.
+
+    Den nya instansen har laddat integrationerna men inte startat, så att testet kan sätta
+    källentiteternas tillstånd först, som deras integrationer gör under en omstart. Starta
+    den med hass.async_start().
+    """
+    # HA sparar entiteternas senaste tillstånd när den stängs av; testinstanserna gör det inte.
+    await restore_state.async_get(hass).async_dump_states()
+    await hass.async_stop()
+    await unload(hass)
+    async with async_test_home_assistant(
+        config_dir=hass.config.config_dir, initial_state=CoreState.not_running
+    ) as new:
+        new.data.pop(loader.DATA_CUSTOM_COMPONENTS)
+        await async_mock_load_restore_state_from_storage(new)
+        await new.config_entries.async_initialize()
+        try:
+            yield new
+        finally:
+            await unload(new)
+            await new.async_stop()
+
+
+async def unload(hass: HomeAssistant) -> None:
+    """Ladda ur integrationerna, så att testet inte lämnar timrar efter sig."""
+    for entry in hass.config_entries.async_entries():
+        if entry.state is config_entries.ConfigEntryState.LOADED:
+            await hass.config_entries.async_unload(entry.entry_id)
 
 
 async def add_integration(hass: HomeAssistant) -> ConfigEntry:

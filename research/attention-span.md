@@ -52,6 +52,7 @@ En regel konfigureras i gränssnittet (en config subentry per regel). Dialogen h
 - Om **Dölj när** är uppfyllt blir regeln dold.
 - Om en enhet som regeln handlar om är otillgänglig enligt Tillgänglighet, blir regeln dold och Tillgänglighets notis tar över (ADR 0003). Regeldialogen visar den ärvda bevakningen under respektive nivå, med en länk till Tillgänglighet.
 - Integrationen lyssnar på entiteterna i varje regels villkor och räknar om när de ändras. Tidsbaserade villkor räknas om på en timer.
+- Villkor med tid («offline i 2 h») räknar från när villkoret började gälla, inte som i HA från källentitetens `last_changed`, som sätts om när källans integration laddas efter en omstart. När villkoren började gälla sparas i Home Assistants lagring (`Store`). En regel som var Larm före en omstart är därför Larm direkt efter den, med samma `since`, och ett villkor som slutade gälla under omstarten räknas som släppt. Medan en källentitet väntar på att dess integration ska laddas behålls den sparade tiden.
 
 ### Exempel
 
@@ -152,6 +153,7 @@ Attributnamnen är ett versionerat, dokumenterat kontrakt så att tredjepartskor
 | `snoozed` | Om notisen ligger åt sidan |
 | `snoozed_until` | Till när; `null` med `snoozed: true` betyder «tills det är lagat» |
 | `occurrences` | De närmaste tillfällena, först det tidigaste, bara för typen `upcoming`. Varje tillfälle har `start`, `end` och `summary`; heldag anges som datum, och för en sensor med tidpunkter är `end` och `summary` `null` |
+| `state_since` | När den visade entiteten fick sitt tillstånd, också över en omstart av Home Assistant, bara för typen `status`; `null` innan Home Assistant har startat, när entiteten saknas och medan den väntar på att dess integration ska laddas med ett annat tillstånd än före omstarten |
 | `card` | Kortkonfigurationen, bara för typen `custom` |
 | `integrations` | Trasiga integrationer, bara på `sensor.attention_span_integrations` |
 

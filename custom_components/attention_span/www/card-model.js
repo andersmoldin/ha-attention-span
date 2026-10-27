@@ -186,8 +186,10 @@ function content(hass, attributes, now) {
     const text = strings(hass).group(state, count, group.length);
     return { text, moreInfo: shown.entity_id };
   }
-  const since = duration(now - Date.parse(shown.last_changed), language(hass));
-  return { text: strings(hass).status(state, since) };
+  // Regeln vet när tillståndet började, också över en omstart av HA, som sätter om
+  // entitetens last_changed. Innan HA har startat vet den det inte än.
+  const since = attributes.state_since ?? shown.last_changed;
+  return { text: strings(hass).status(state, duration(now - Date.parse(since), language(hass))) };
 }
 
 function row(hass, stateObj, now) {

@@ -35,6 +35,16 @@ export function value(entityId, state, unit) {
   return { entity_id: entityId, state, attributes: unit ? { unit_of_measurement: unit } : {} };
 }
 
+// Tiden för minutes minuter sedan, som HA skriver tider i attribut.
+export function ago(minutes) {
+  return new Date(Date.now() - minutes * 60_000).toISOString();
+}
+
+// En notis av typen Status vars visade tillstånd har gällt i minutes minuter enligt regeln.
+export function held(name, minutes, { state, attributes = {} } = {}) {
+  return notice(name, { state, attributes: { state_since: ago(minutes), ...attributes } });
+}
+
 // Entiteten som en Rule av typen Status visar: ett tillstånd som HA redan har formaterat
 // och som har gällt i minutes minuter.
 export function status(entityId, state, minutes) {

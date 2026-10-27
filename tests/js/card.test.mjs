@@ -5,9 +5,11 @@ import {
   cardHelpers,
   entity,
   fakeHass,
+  held,
   notice,
   renderCard,
   settled,
+  ago,
   status,
   text,
   value,
@@ -201,9 +203,9 @@ test("Larm, Problem och Pågår ritas som egna kort i den ordningen, över Blick
     fakeHass({
       notices: [
         notice("value_glance"),
-        notice("status_ongoing"),
-        notice("status_problem"),
-        notice("status_alarm"),
+        held("status_ongoing", 25),
+        held("status_problem", 10),
+        held("status_alarm", 3 * 60),
       ],
       values: [BILEN, FINDUS, DORREN, TVATTEN],
     }),
@@ -224,9 +226,9 @@ test("Larm, Problem och Pågår ritas som egna kort i den ordningen, över Blick
 });
 
 test("varje notis på Pågår får ett eget kort", () => {
-  const dorren = notice("status_problem", { state: "ongoing" });
+  const dorren = held("status_problem", 10, { state: "ongoing" });
   const root = renderCard(
-    fakeHass({ notices: [notice("status_ongoing"), dorren], values: [DORREN, TVATTEN] }),
+    fakeHass({ notices: [held("status_ongoing", 25), dorren], values: [DORREN, TVATTEN] }),
   );
 
   assert.deepEqual([...root.querySelectorAll(".notice.ongoing")].map(text), [
@@ -259,7 +261,7 @@ test("Larm ritas stort och rött ur temat", () => {
 
 test("en Status-notis på Blick visar namnet först, sedan tillståndet och hur länge", () => {
   const root = renderCard(
-    fakeHass({ notices: [notice("status_problem", { state: "glance" })], values: [DORREN] }),
+    fakeHass({ notices: [held("status_problem", 10, { state: "glance" })], values: [DORREN] }),
   );
 
   assert.equal(text(root.querySelector(".glance")), "Ytterdörren Öppen i 10 min");
@@ -275,7 +277,7 @@ test("hur länge räknas i minuter, timmar eller dagar", () => {
   ]) {
     const root = renderCard(
       fakeHass({
-        notices: [notice("status_problem")],
+        notices: [held("status_problem", minutes)],
         values: [status("binary_sensor.ytterdorr", "Öppen", minutes)],
       }),
     );
@@ -284,10 +286,22 @@ test("hur länge räknas i minuter, timmar eller dagar", () => {
   }
 });
 
+test("Status räknar hur länge från när regeln såg tillståndet börja, också efter en omstart", () => {
+  // HA har startat om för 1 min sedan och gett dörren ett nytt last_changed.
+  const root = renderCard(
+    fakeHass({
+      notices: [notice("status_problem", { attributes: { state_since: ago(3 * 60) } })],
+      values: [status("binary_sensor.ytterdorr", "Öppen", 1)],
+    }),
+  );
+
+  assert.equal(text(root.querySelector(".notice")), "Ytterdörren Öppen i 3 tim");
+});
+
 test("Status följer användarens språk", () => {
   const root = renderCard(
     fakeHass({
-      notices: [notice("status_problem")],
+      notices: [held("status_problem", 10)],
       values: [status("binary_sensor.ytterdorr", "Open", 10)],
       language: "en",
     }),
@@ -309,7 +323,12 @@ test("hur länge räknas upp medan kortet visas, utan att något annat ändras",
   // dess timer, och då avslutas inte testerna.
   document.body.replaceChildren();
   t.mock.timers.enable({ apis: ["Date", "setInterval"], now: Date.parse("2026-10-26T08:00:00Z") });
-  const root = renderCard(fakeHass({ notices: [notice("status_problem")], values: [status("binary_sensor.ytterdorr", "Öppen", 10)] }));
+  const root = renderCard(
+    fakeHass({
+      notices: [held("status_problem", 10)],
+      values: [status("binary_sensor.ytterdorr", "Öppen", 10)],
+    }),
+  );
   assert.equal(text(root.querySelector(".notice")), "Ytterdörren Öppen i 10 min");
 
   t.mock.timers.tick(60_000);
@@ -523,7 +542,7 @@ test("en entitet med listan entity_id som inte är en grupp visar tillståndet o
   const scene = entity("scene.kvall", "Aktiverad", { entity_id: ["light.kok"] }, 10);
   const root = renderCard(
     fakeHass({
-      notices: [notice("status_group_ongoing", { attributes: { entities: ["scene.kvall"] } })],
+      notices: [held("status_group_ongoing", 10, { attributes: { entities: ["scene.kvall"] } })],
       values: [scene],
     }),
   );
