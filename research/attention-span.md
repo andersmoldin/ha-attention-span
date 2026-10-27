@@ -96,7 +96,7 @@ En egen inställningssida, inte en del av varje regel (ADR 0003).
 ### Lägg åt sidan (Problem och Pågår)
 
 - Valen är **1 timme · Idag kl. N · I morgon bitti · Tills det är lagat**. De är standard och kan ändras i kortets konfiguration. «Tills det är lagat» har ingen sluttid.
-- «Idag kl. N» är nu plus 4 timmar, uppåt till hel timme (07:45 ger «Idag kl. 12», 18:30 ger «Idag kl. 23»). Efter 19:00 visas valet inte. Hur långt fram och efter vilket klockslag valet inte visas går att ändra i kortets konfiguration. Valet ersätter «Ikväll 21:00», som gav i morgon 21:00 när man tryckte efter 21:00.
+- «Idag kl. N» är nu plus 4 timmar, uppåt till hel timme (07:45 ger «Idag kl. 12», 18:30 ger «Idag kl. 23»). Valet visas från 06:00 till 19:00; efter 19:00 och före 06:00 visas det inte (05:59 och 23:00 ger inget val, 06:00 ger «Idag kl. 10»). Hur långt fram och mellan vilka klockslag valet visas går att ändra i kortets konfiguration. Valet ersätter «Ikväll 21:00», som gav i morgon 21:00 när man tryckte efter 21:00.
 - En notis som lagts åt sidan visas igen när något av följande inträffar:
   1. **Tiden har gått ut.**
   2. **Ny händelse:** regeln har varit under nivån den lades åt sidan på (lägre nivå eller dold) längre än fladdergränsen och når den nivån igen. För den samlade integrationsnotisen räknas en ny trasig integration som en ny händelse.

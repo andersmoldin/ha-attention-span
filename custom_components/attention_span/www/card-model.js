@@ -311,7 +311,7 @@ function dayAndTime(hass, iso, now) {
 // choices.
 const DEFAULT_SNOOZE_OPTIONS = [
   { name: null, label: "hour", for: 60 * 60_000 },
-  { name: null, ahead: 4 * 60 * 60_000, latest: "19:00" },
+  { name: null, ahead: 4 * 60 * 60_000, earliest: "06:00", latest: "19:00" },
   { name: null, label: "morning", at: "07:00" },
   { name: null, label: "fixed" },
 ];
@@ -353,7 +353,7 @@ function timeOfDay(value, where) {
 // valfritt namn (name) och antingen hur länge (for), ett klockslag nästa gång det inträffar i
 // hemmets tidszon (at, «HH:MM»), hur långt fram från nu, uppåt till hel timme i dag (ahead),
 // eller ingetdera, «tills det är lagat». Ett val med ahead heter «Idag kl. N» efter timmen det
-// ger och visas inte efter klockslaget latest. Tidsperioderna skrivs som HA:s väljare för
+// ger och visas bara från klockslaget earliest till och med latest. Tidsperioderna skrivs som HA:s väljare för
 // tidsperioder, { hours: 1 }. Utan snooze_options gäller standardvalen. En ogiltig
 // konfiguration ger ett fel, som HA visar i stället för kortet.
 export function snoozeOptions(options) {
@@ -365,7 +365,7 @@ export function snoozeOptions(options) {
     const where = `snooze_options[${i}]`;
     if (!isObject(option)) throw new Error(`${where} must be a choice with name, for, at or ahead`);
     const unknown = Object.keys(option).filter(
-      (key) => !["name", "for", "at", "ahead", "latest"].includes(key),
+      (key) => !["name", "for", "at", "ahead", "earliest", "latest"].includes(key),
     );
     if (unknown.length) throw new Error(`${where} has unknown keys: ${unknown.join(", ")}`);
     const { name = null } = option;
@@ -375,16 +375,19 @@ export function snoozeOptions(options) {
     if (["for", "at", "ahead"].filter((key) => option[key] !== undefined).length > 1) {
       throw new Error(`${where} can have only one of for, at and ahead`);
     }
-    if (option.latest !== undefined && option.ahead === undefined) {
-      throw new Error(`${where}.latest needs ahead`);
+    for (const key of ["earliest", "latest"]) {
+      if (option[key] !== undefined && option.ahead === undefined) {
+        throw new Error(`${where}.${key} needs ahead`);
+      }
     }
     if (option.ahead !== undefined) {
       if (name !== null) throw new Error(`${where} with ahead is named after the hour it gives`);
-      return {
-        name,
-        ahead: positivePeriod(option.ahead, `${where}.ahead`),
-        latest: option.latest === undefined ? "23:59" : timeOfDay(option.latest, `${where}.latest`),
-      };
+      const earliest =
+        option.earliest === undefined ? "00:00" : timeOfDay(option.earliest, `${where}.earliest`);
+      const latest =
+        option.latest === undefined ? "23:59" : timeOfDay(option.latest, `${where}.latest`);
+      if (earliest > latest) throw new Error(`${where}.earliest must be before latest`);
+      return { name, ahead: positivePeriod(option.ahead, `${where}.ahead`), earliest, latest };
     }
     if (option.at !== undefined) return { name, at: timeOfDay(option.at, `${where}.at`) };
     if (option.for !== undefined) return { name, for: positivePeriod(option.for, `${where}.for`) };
@@ -405,11 +408,11 @@ function homeClock(hass, now) {
 }
 
 // Ett val med ahead som det ser ut nu: «Idag kl. N» och tiden N:00 i dag i hemmets tidszon,
-// som är nu plus ahead uppåt till hel timme. Inget efter klockslaget latest eller när timmen
-// inte är i dag.
+// som är nu plus ahead uppåt till hel timme. Inget före klockslaget earliest, efter latest
+// eller när timmen inte är i dag.
 function laterToday(hass, option, now) {
   const { today, time } = homeClock(hass, now);
-  if (time > option.latest) return [];
+  if (time < option.earliest || time > option.latest) return [];
   const [h, m] = time.split(":").map(Number);
   const hour = Math.ceil((h * 60 + m + option.ahead / 60_000) / 60);
   if (hour > 23) return [];

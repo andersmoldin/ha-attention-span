@@ -78,14 +78,17 @@ test("ett val lägger notisen åt sidan för hela hushållet, till tiden i hemme
   }
 });
 
-test("«Idag kl. N» är fyra timmar fram, uppåt till hel timme, och visas inte efter 19:00", (t) => {
+test("«Idag kl. N» är fyra timmar fram, uppåt till hel timme, och visas bara från 06:00 till 19:00", (t) => {
   // Klockslag i hemmets tidszon (UTC+1) och valen då, med vad «Idag kl. N» skickar.
   const cases = {
+    "05:59": null,
+    "06:00": ["Idag kl. 10", "2026-10-26T10:00:00"],
     "07:45": ["Idag kl. 12", "2026-10-26T12:00:00"],
     "08:00": ["Idag kl. 12", "2026-10-26T12:00:00"],
     "18:30": ["Idag kl. 23", "2026-10-26T23:00:00"],
     "18:59": ["Idag kl. 23", "2026-10-26T23:00:00"],
     "19:01": null,
+    "23:00": null,
   };
   for (const [time, today] of Object.entries(cases)) {
     const hass = fakeHass({ notices: [held("status_problem", 10)], values: [DORREN] });
@@ -227,13 +230,14 @@ test("valen för åt sidan ställs in i kortets konfiguration", (t) => {
       { at: "06:00" },
       { ahead: { hours: 1, minutes: 30 }, latest: "21:00" },
       { ahead: { hours: 2 }, latest: "08:00" },
+      { ahead: { hours: 3 }, earliest: "09:30" },
       { name: "Tills vidare" },
     ],
   });
   const el = root.querySelector(".notice.problem");
   press(el, "Lägg åt sidan");
 
-  // Klockan är 09:00, efter 08:00, så det sista valet med ahead visas inte.
+  // Klockan är 09:00, efter 08:00 och före 09:30, så de två sista valen med ahead visas inte.
   assert.deepEqual(buttons(el).slice(1), [
     "En kvart",
     "2 tim",
@@ -275,6 +279,9 @@ test("en ogiltig konfiguration av valen ger ett fel som HA visar i stället för
     [[{ ahead: "4:00" }], /snooze_options\[0\]\.ahead must be a duration/],
     [[{ ahead: { hours: 4 }, latest: "19" }], /snooze_options\[0\]\.latest/],
     [[{ for: { hours: 1 }, latest: "19:00" }], /latest needs ahead/],
+    [[{ ahead: { hours: 4 }, earliest: "6:00" }], /snooze_options\[0\]\.earliest/],
+    [[{ at: "07:00", earliest: "06:00" }], /earliest needs ahead/],
+    [[{ ahead: { hours: 4 }, earliest: "19:00", latest: "06:00" }], /earliest .* before latest/],
     [[{ name: "Snart", ahead: { hours: 4 } }], /named after the hour/],
     [[{ name: "Ikväll", until: "21:00" }], /unknown keys: until/],
     [[{ name: "" }], /\.name/],
