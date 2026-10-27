@@ -52,6 +52,7 @@ En regel konfigureras i gränssnittet (en config subentry per regel). Dialogen h
 - Om **Dölj när** är uppfyllt blir regeln dold.
 - Om en enhet som regeln handlar om är otillgänglig enligt Tillgänglighet, blir regeln dold och Tillgänglighets notis tar över (ADR 0003). Regeldialogen visar den ärvda bevakningen under respektive nivå, med en länk till Tillgänglighet.
 - Integrationen lyssnar på entiteterna i varje regels villkor och räknar om när de ändras. Tidsbaserade villkor räknas om på en timer.
+- Villkor med tid («offline i 2 h») räknar från när villkoret började gälla, inte som i HA från källentitetens `last_changed`, som sätts om när källans integration laddas efter en omstart. När villkoren började gälla sparas i Home Assistants lagring (`Store`). En regel som var Larm före en omstart är därför Larm direkt efter den, med samma `since`, och ett villkor som slutade gälla under omstarten räknas som släppt. Medan en källentitet väntar på att dess integration ska laddas behålls den sparade tiden.
 
 ### Exempel
 
