@@ -9,12 +9,12 @@ const NOW = Date.parse("2026-10-26T08:00:00Z");
 const DORREN = status("binary_sensor.ytterdorr", "Öppen", 10);
 const TVATTEN = status("sensor.tvattmaskin", "Kör", 25);
 
-// Ritar kortet med låtsad klocka, NOW (09:00 i hemmets tidszon, Europe/Stockholm).
-function renderAt(t, hass, config) {
+// Ritar kortet med låtsad klocka, now (NOW är 09:00 i hemmets tidszon, Europe/Stockholm).
+function renderAt(t, hass, config, now = NOW) {
   // Ta bort förra testets kort med den riktiga klockan; en låtsad clearInterval stoppar inte
   // dess timer, och då avslutas inte testerna.
   document.body.replaceChildren();
-  t.mock.timers.enable({ apis: ["Date", "setInterval"], now: NOW });
+  t.mock.timers.enable({ apis: ["Date", "setInterval"], now });
   return renderCard(hass, config);
 }
 
@@ -44,7 +44,7 @@ test("Problem och Pågår har «Lägg åt sidan», som visar valen", (t) => {
     assert.deepEqual(buttons(el), [
       "Lägg åt sidan",
       "1 timme",
-      "Ikväll 21:00",
+      "Idag kl. 13",
       "I morgon bitti",
       "Tills det är lagat",
     ]);
@@ -54,7 +54,7 @@ test("Problem och Pågår har «Lägg åt sidan», som visar valen", (t) => {
 test("ett val lägger notisen åt sidan för hela hushållet, till tiden i hemmets tidszon", (t) => {
   const choices = {
     "1 timme": { until: "2026-10-26T09:00:00.000Z" },
-    "Ikväll 21:00": { until: "2026-10-26T21:00:00" },
+    "Idag kl. 13": { until: "2026-10-26T13:00:00" },
     "I morgon bitti": { until: "2026-10-27T07:00:00" },
     "Tills det är lagat": {},
   };
@@ -76,6 +76,48 @@ test("ett val lägger notisen åt sidan för hela hushållet, till tiden i hemme
     assert.deepEqual(buttons(el), ["Lägg åt sidan"]);
     t.mock.timers.reset();
   }
+});
+
+test("«Idag kl. N» är fyra timmar fram, uppåt till hel timme, och visas inte efter 19:00", (t) => {
+  // Klockslag i hemmets tidszon (UTC+1) och valen då, med vad «Idag kl. N» skickar.
+  const cases = {
+    "07:45": ["Idag kl. 12", "2026-10-26T12:00:00"],
+    "08:00": ["Idag kl. 12", "2026-10-26T12:00:00"],
+    "18:30": ["Idag kl. 23", "2026-10-26T23:00:00"],
+    "18:59": ["Idag kl. 23", "2026-10-26T23:00:00"],
+    "19:01": null,
+  };
+  for (const [time, today] of Object.entries(cases)) {
+    const hass = fakeHass({ notices: [held("status_problem", 10)], values: [DORREN] });
+    const now = Date.parse(`2026-10-26T${time}:00+01:00`);
+    const el = renderAt(t, hass, undefined, now).querySelector(".notice.problem");
+    press(el, "Lägg åt sidan");
+
+    assert.deepEqual(
+      buttons(el).slice(1),
+      ["1 timme", ...(today ? [today[0]] : []), "I morgon bitti", "Tills det är lagat"],
+      time,
+    );
+    if (today) {
+      press(el, today[0]);
+      assert.deepEqual(hass.calls.map((call) => call.data), [{ until: today[1] }], time);
+    }
+    t.mock.timers.reset();
+  }
+});
+
+test("«Idag kl. N» skickar timmen som står på knappen, också när klockan har gått sedan den ritades", (t) => {
+  const hass = fakeHass({ notices: [held("status_problem", 10)], values: [DORREN] });
+  const el = renderAt(t, hass, undefined, Date.parse("2026-10-26T08:00:50+01:00")).querySelector(
+    ".notice.problem",
+  );
+  press(el, "Lägg åt sidan");
+  // 08:01:35, när nu plus fyra timmar har gått förbi 12:00, men kortet har inte ritats om.
+  t.mock.timers.tick(45_000);
+
+  press(el, "Idag kl. 12");
+
+  assert.deepEqual(hass.calls.map((call) => call.data), [{ until: "2026-10-26T12:00:00" }]);
 });
 
 // Dörren ligger åt sidan till 21:00 i hemmets tidszon och har varit ett Problem sedan 08:40.
@@ -179,17 +221,27 @@ test("valen för åt sidan ställs in i kortets konfiguration", (t) => {
   const hass = fakeHass({ notices: [held("status_problem", 10)], values: [DORREN] });
   const root = renderAt(t, hass, {
     snooze_options: [
-      { name: "En kvart", for: "0:15" },
+      { name: "En kvart", for: { minutes: 15 } },
       { for: { hours: 2 } },
       { name: "Lunch", at: "12:30" },
       { at: "06:00" },
+      { ahead: { hours: 1, minutes: 30 }, latest: "21:00" },
+      { ahead: { hours: 2 }, latest: "08:00" },
       { name: "Tills vidare" },
     ],
   });
   const el = root.querySelector(".notice.problem");
   press(el, "Lägg åt sidan");
 
-  assert.deepEqual(buttons(el).slice(1), ["En kvart", "2 tim", "Lunch", "06:00", "Tills vidare"]);
+  // Klockan är 09:00, efter 08:00, så det sista valet med ahead visas inte.
+  assert.deepEqual(buttons(el).slice(1), [
+    "En kvart",
+    "2 tim",
+    "Lunch",
+    "06:00",
+    "Idag kl. 11",
+    "Tills vidare",
+  ]);
   for (const label of buttons(el).slice(1)) {
     press(el, label);
     press(el, "Lägg åt sidan");
@@ -202,6 +254,7 @@ test("valen för åt sidan ställs in i kortets konfiguration", (t) => {
       { until: "2026-10-26T12:30:00" },
       // 06:00 har redan varit i dag.
       { until: "2026-10-27T06:00:00" },
+      { until: "2026-10-26T11:00:00" },
       {},
     ],
   );
@@ -213,9 +266,16 @@ test("en ogiltig konfiguration av valen ger ett fel som HA visar i stället för
     [[], /at least one choice/],
     ["1 timme", /at least one choice/],
     [[{ at: "25:00" }], /snooze_options\[0\]\.at/],
-    [[{ for: "en timme" }], /snooze_options\[0\]\.for/],
+    [[{ for: "en timme" }], /snooze_options\[0\]\.for must be a duration/],
+    [[{ for: "1:00" }], /snooze_options\[0\]\.for must be a duration/],
     [[{ for: { hours: 0 } }], /snooze_options\[0\]\.for/],
-    [[{ for: "1:00", at: "21:00" }], /not both/],
+    [[{ for: { weeks: 1 } }], /snooze_options\[0\]\.for/],
+    [[{ for: { hours: 1 }, at: "21:00" }], /only one of for, at and ahead/],
+    [[{ at: "07:00", ahead: { hours: 4 } }], /only one of for, at and ahead/],
+    [[{ ahead: "4:00" }], /snooze_options\[0\]\.ahead must be a duration/],
+    [[{ ahead: { hours: 4 }, latest: "19" }], /snooze_options\[0\]\.latest/],
+    [[{ for: { hours: 1 }, latest: "19:00" }], /latest needs ahead/],
+    [[{ name: "Snart", ahead: { hours: 4 } }], /named after the hour/],
     [[{ name: "Ikväll", until: "21:00" }], /unknown keys: until/],
     [[{ name: "" }], /\.name/],
   ]) {
@@ -237,7 +297,7 @@ test("åt sidan följer användarens språk", (t) => {
   assert.deepEqual(buttons(el), [
     "Snooze",
     "1 hour",
-    "Tonight 21:00",
+    "Today 13:00",
     "Tomorrow morning",
     "Until fixed",
   ]);
@@ -295,5 +355,5 @@ test("valen följer en ändrad konfiguration och ett ändrat språk, också på 
 
   root.host.setConfig({ type: "custom:attention-span-card" });
   root.host.hass = fakeHass({ notices: [held("status_problem", 10)], values: [DORREN], language: "en" });
-  assert.deepEqual(buttons(el), ["Snooze", "1 hour", "Tonight 21:00", "Tomorrow morning", "Until fixed"]);
+  assert.deepEqual(buttons(el), ["Snooze", "1 hour", "Today 13:00", "Tomorrow morning", "Until fixed"]);
 });

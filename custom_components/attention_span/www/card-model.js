@@ -20,7 +20,8 @@ const DRAWN_TYPES = ["value", "status", "progress", "upcoming", "custom"];
 // stapel har ett brett plustecken (＋) som i specen, så att det syns på den röda stapeln.
 // acknowledge är knappen som kvitterar ett Larm, och acknowledged och realarm texten på ett
 // kvitterat Larm: utan och med hur länge det är kvar tills det larmar igen. snooze är knappen
-// som visar valen för åt sidan, och choices valens standardnamn. snoozedChip är chipet för
+// som visar valen för åt sidan, och choices valens standardnamn; today är namnet på ett val
+// som räknas fram från nu, med timmen det ger i dag. snoozedChip är chipet för
 // notiserna som ligger åt sidan, snoozedTitle rubriken på deras lista, snoozedUntil och
 // snoozedUntilFixed texten på varje post i den, unsnooze knappen som tar fram en notis igen
 // och nothingSnoozed texten när listan är tom. yesterday säger att en tid var i går.
@@ -36,7 +37,7 @@ const STRINGS = {
     snooze: "Snooze",
     choices: {
       hour: "1 hour",
-      tonight: "Tonight 21:00",
+      today: (hour) => `Today ${hour}:00`,
       morning: "Tomorrow morning",
       fixed: "Until fixed",
     },
@@ -65,7 +66,7 @@ const STRINGS = {
     snooze: "Lägg åt sidan",
     choices: {
       hour: "1 timme",
-      tonight: "Ikväll 21:00",
+      today: (hour) => `Idag kl. ${hour}`,
       morning: "I morgon bitti",
       fixed: "Tills det är lagat",
     },
@@ -310,22 +311,16 @@ function dayAndTime(hass, iso, now) {
 // choices.
 const DEFAULT_SNOOZE_OPTIONS = [
   { name: null, label: "hour", for: 60 * 60_000 },
-  { name: null, label: "tonight", at: "21:00" },
+  { name: null, ahead: 4 * 60 * 60_000, latest: "19:00" },
   { name: null, label: "morning", at: "07:00" },
   { name: null, label: "fixed" },
 ];
 
 const PERIOD_UNITS = { days: 86_400_000, hours: 3_600_000, minutes: 60_000, seconds: 1000 };
 
-// En tidsperiod i millisekunder, som HA skriver dem: «H:MM», «H:MM:SS» eller
+// En tidsperiod i millisekunder, som HA:s väljare för tidsperioder skriver dem:
 // { days, hours, minutes, seconds }. NaN när den inte går att läsa.
 function period(value) {
-  if (typeof value === "string") {
-    const match = /^(\d+):([0-5]\d)(?::([0-5]\d))?$/.exec(value);
-    if (!match) return Number.NaN;
-    const [h, m, sec = 0] = match.slice(1).map((part) => (part === undefined ? 0 : Number(part)));
-    return ((h * 60 + m) * 60 + sec) * 1000;
-  }
   if (!isObject(value)) return Number.NaN;
   let ms = 0;
   for (const [unit, amount] of Object.entries(value)) {
@@ -335,10 +330,32 @@ function period(value) {
   return ms;
 }
 
+// En tidsperiod längre än noll, i millisekunder, eller ett fel.
+function positivePeriod(value, where) {
+  const ms = period(value);
+  if (!(ms > 0)) {
+    throw new Error(
+      `${where} must be a duration with days, hours, minutes or seconds, such as { hours: 1 }`,
+    );
+  }
+  return ms;
+}
+
+// Ett klockslag, «HH:MM», eller ett fel.
+function timeOfDay(value, where) {
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(value)) {
+    throw new Error(`${where} must be a time of day, HH:MM`);
+  }
+  return value;
+}
+
 // Valen för åt sidan ur kortets konfiguration snooze_options: en lista där varje val har ett
 // valfritt namn (name) och antingen hur länge (for), ett klockslag nästa gång det inträffar i
-// hemmets tidszon (at, «HH:MM») eller ingetdera, «tills det är lagat». Utan snooze_options
-// gäller standardvalen. En ogiltig konfiguration ger ett fel, som HA visar i stället för kortet.
+// hemmets tidszon (at, «HH:MM»), hur långt fram från nu, uppåt till hel timme i dag (ahead),
+// eller ingetdera, «tills det är lagat». Ett val med ahead heter «Idag kl. N» efter timmen det
+// ger och visas inte efter klockslaget latest. Tidsperioderna skrivs som HA:s väljare för
+// tidsperioder, { hours: 1 }. Utan snooze_options gäller standardvalen. En ogiltig
+// konfiguration ger ett fel, som HA visar i stället för kortet.
 export function snoozeOptions(options) {
   if (options === undefined) return DEFAULT_SNOOZE_OPTIONS;
   if (!Array.isArray(options) || !options.length) {
@@ -346,29 +363,58 @@ export function snoozeOptions(options) {
   }
   return options.map((option, i) => {
     const where = `snooze_options[${i}]`;
-    if (!isObject(option)) throw new Error(`${where} must be a choice with name, for or at`);
-    const unknown = Object.keys(option).filter((key) => !["name", "for", "at"].includes(key));
+    if (!isObject(option)) throw new Error(`${where} must be a choice with name, for, at or ahead`);
+    const unknown = Object.keys(option).filter(
+      (key) => !["name", "for", "at", "ahead", "latest"].includes(key),
+    );
     if (unknown.length) throw new Error(`${where} has unknown keys: ${unknown.join(", ")}`);
     const { name = null } = option;
     if (name !== null && (typeof name !== "string" || !name.trim())) {
       throw new Error(`${where}.name must be a text`);
     }
-    if (option.for !== undefined && option.at !== undefined) {
-      throw new Error(`${where} can have for or at, not both`);
+    if (["for", "at", "ahead"].filter((key) => option[key] !== undefined).length > 1) {
+      throw new Error(`${where} can have only one of for, at and ahead`);
     }
-    if (option.at !== undefined) {
-      if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(option.at)) {
-        throw new Error(`${where}.at must be a time of day, HH:MM`);
-      }
-      return { name, at: option.at };
+    if (option.latest !== undefined && option.ahead === undefined) {
+      throw new Error(`${where}.latest needs ahead`);
     }
-    if (option.for !== undefined) {
-      const ms = period(option.for);
-      if (!(ms > 0)) throw new Error(`${where}.for must be a duration, H:MM or { hours: 1 }`);
-      return { name, for: ms };
+    if (option.ahead !== undefined) {
+      if (name !== null) throw new Error(`${where} with ahead is named after the hour it gives`);
+      return {
+        name,
+        ahead: positivePeriod(option.ahead, `${where}.ahead`),
+        latest: option.latest === undefined ? "23:59" : timeOfDay(option.latest, `${where}.latest`),
+      };
     }
+    if (option.at !== undefined) return { name, at: timeOfDay(option.at, `${where}.at`) };
+    if (option.for !== undefined) return { name, for: positivePeriod(option.for, `${where}.for`) };
     return { name };
   });
+}
+
+// Datumet, «2026-10-29», och klockslaget, «HH:MM», för en tidpunkt i hemmets tidszon.
+function homeClock(hass, now) {
+  const zone = hass.config?.time_zone;
+  const time = new Intl.DateTimeFormat("en-GB", {
+    timeZone: zone,
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).format(now);
+  return { today: localDate(now, zone), time };
+}
+
+// Ett val med ahead som det ser ut nu: «Idag kl. N» och tiden N:00 i dag i hemmets tidszon,
+// som är nu plus ahead uppåt till hel timme. Inget efter klockslaget latest eller när timmen
+// inte är i dag.
+function laterToday(hass, option, now) {
+  const { today, time } = homeClock(hass, now);
+  if (time > option.latest) return [];
+  const [h, m] = time.split(":").map(Number);
+  const hour = Math.ceil((h * 60 + m + option.ahead / 60_000) / 60);
+  if (hour > 23) return [];
+  const until = `${today}T${String(hour).padStart(2, "0")}:00:00`;
+  return [{ name: strings(hass).choices.today(hour), until }];
 }
 
 // Namnet på ett val för åt sidan: det egna, standardnamnet eller vad valet gör.
@@ -381,21 +427,25 @@ function choiceName(hass, option) {
   return text.choices.fixed;
 }
 
-// Vad tjänsten snooze får för ett val, räknat från now: till när, eller inget för «tills det är
-// lagat». Ett klockslag är nästa gång det inträffar i hemmets tidszon och skickas utan
-// tidszon, som HA:s datumväljare gör, så att HA räknar det i hemmets tidszon.
-export function snoozeData(hass, option, now) {
-  if (option.for !== undefined) return { until: new Date(now + option.for).toISOString() };
-  if (option.at === undefined) return {};
-  const zone = hass.config?.time_zone;
-  const time = new Intl.DateTimeFormat("en-GB", {
-    timeZone: zone,
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-  }).format(now);
-  const today = localDate(now, zone);
-  return { until: `${option.at > time ? today : nextDate(today)}T${option.at}:00` };
+// Valen för åt sidan som kortet visar nu, med sina namn. Ett val med ahead har sin tid räknad
+// redan här, så att tiden som skickas är den i namnet.
+function choices(hass, options, now) {
+  return options.flatMap(({ label, ...option }) =>
+    option.ahead !== undefined
+      ? laterToday(hass, option, now)
+      : [{ ...option, name: choiceName(hass, { label, ...option }) }],
+  );
+}
+
+// Vad tjänsten snooze får för ett val ur cardModel, räknat från now: till när, eller inget för
+// «tills det är lagat». Ett klockslag är nästa gång det inträffar i hemmets tidszon och skickas
+// utan tidszon, som HA:s datumväljare gör, så att HA räknar det i hemmets tidszon.
+export function snoozeData(hass, choice, now) {
+  if (choice.for !== undefined) return { until: new Date(now + choice.for).toISOString() };
+  if (choice.until !== undefined) return { until: choice.until };
+  if (choice.at === undefined) return {};
+  const { today, time } = homeClock(hass, now);
+  return { until: `${choice.at > time ? today : nextDate(today)}T${choice.at}:00` };
 }
 
 // En notis som ligger åt sidan, som en post i listan «Lagt åt sidan»: till när och sedan när
@@ -457,7 +507,7 @@ function byNoticeOrder(a, b) {
 
 // now är tiden i millisekunder, så att «hur länge» kan räknas, och options valen för åt sidan
 // ur snoozeOptions. Notiserna som ligger åt sidan ritas inte på sin nivå utan står i snoozed,
-// och choices är valens namn.
+// och choices är valen som kortet visar nu, med namn, som snoozeData tar.
 export function cardModel(hass, now, options = DEFAULT_SNOOZE_OPTIONS) {
   const notices = Object.keys(hass.entities ?? {})
     .filter((id) => hass.entities[id].platform === DOMAIN)
@@ -477,7 +527,7 @@ export function cardModel(hass, now, options = DEFAULT_SNOOZE_OPTIONS) {
         .sort(byNoticeOrder)
         .map((s) => snoozedRow(hass, s, now)),
     ),
-    choices: options.map((option) => choiceName(hass, option)),
+    choices: choices(hass, options, now),
     alarm: atLevel("alarm"),
     problem: atLevel("problem"),
     ongoing: atLevel("ongoing"),

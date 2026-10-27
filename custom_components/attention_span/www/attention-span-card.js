@@ -228,12 +228,12 @@ function actionsPart(host) {
   };
   const update = (newRow, text) => {
     row = newRow;
-    const choiceNames = host.choices();
-    const key = JSON.stringify([row.id, row.actions, choiceNames]);
+    const choiceList = host.choices();
+    const key = JSON.stringify([row.id, row.actions, choiceList]);
     if (key !== drawn) {
       drawn = key;
       buttons = row.actions.map((action) => actionButton(row.id, action));
-      choices = choiceNames.map((name, i) => {
+      choices = choiceList.map(({ name }, i) => {
         const choice = button(() => {
           open = false;
           place();
@@ -470,7 +470,7 @@ const MORE = {
 
 // Hur en notis byggs: som eget kort (notice) eller som rad (row), med ett inbäddat kort för
 // Eget kort och annars med text. Varje sätt får nivån och host: AttentionSpan-kortets
-// embedded, acknowledge, choices (valens namn för åt sidan), snooze och unsnooze.
+// embedded, acknowledge, choices (valen för åt sidan), snooze och unsnooze.
 const ELEMENTS = {
   notice: { custom: customNoticeElement, text: noticeElement },
   row: { custom: customRowElement, text: rowElement },
@@ -538,7 +538,7 @@ class AttentionSpanCard extends HTMLElement {
       );
     }
     const model = cardModel(this._hass, Date.now(), this._snoozeOptions);
-    // Valens namn för åt sidan, som notiserna läser genom host när de ritas.
+    // Valen för åt sidan som kortet visar nu, som notiserna läser genom host när de ritas.
     this._choices = model.choices;
     const text = strings(this._hass);
     // De inbäddade korten visar egna entiteter och behöver varje ny hass.
@@ -643,10 +643,10 @@ class AttentionSpanCard extends HTMLElement {
       .catch(() => {});
   }
 
-  // Lägg notisen åt sidan för hela hushållet med valet på plats choice bland valen, räknat från
-  // nu. Kortet ritas om när HA skickar notisens nya tillstånd, och HA visar ett fel själv.
+  // Lägg notisen åt sidan för hela hushållet med valet på plats choice bland valen som kortet
+  // visar, räknat från nu. Kortet ritas om när HA skickar notisens nya tillstånd, och HA visar ett fel själv.
   _snooze(entityId, choice) {
-    const data = snoozeData(this._hass, this._snoozeOptions[choice], Date.now());
+    const data = snoozeData(this._hass, this._choices[choice], Date.now());
     this._hass.callService(DOMAIN, "snooze", data, { entity_id: entityId }).catch(() => {});
   }
 
