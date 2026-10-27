@@ -15,8 +15,15 @@ CONF_PRIORITY: Final = "priority"
 CONF_HIDE: Final = "hide"
 
 TYPE_STATUS: Final = "status"
+TYPE_PROGRESS: Final = "progress"
 TYPE_VALUE: Final = "value"
-TYPES: Final = (TYPE_STATUS, TYPE_VALUE)
+TYPE_UPCOMING: Final = "upcoming"
+TYPE_CUSTOM: Final = "custom"
+TYPES: Final = (TYPE_STATUS, TYPE_PROGRESS, TYPE_VALUE, TYPE_UPCOMING, TYPE_CUSTOM)
+# Hur många tillfällen Typen Kommande visar.
+CONF_COUNT: Final = "count"
+# Lovelace-kortkonfigurationen som Typen Eget kort visar.
+CONF_CARD: Final = "card"
 
 # Nivåerna, den allvarligaste först (ADR 0002).
 LEVELS: Final = ("alarm", "problem", "ongoing", "glance", "quiet")

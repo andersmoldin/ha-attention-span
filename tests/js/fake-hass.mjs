@@ -7,7 +7,7 @@ import { after } from "node:test";
 import { Window } from "happy-dom";
 
 const window = new Window();
-for (const name of ["window", "document", "customElements", "HTMLElement"]) {
+for (const name of ["window", "document", "customElements", "HTMLElement", "CustomEvent"]) {
   globalThis[name] = name === "window" ? window : window[name];
 }
 
@@ -43,8 +43,9 @@ export function status(entityId, state, minutes) {
 }
 
 // Som HA: tillstånden, entitetsregistret och formatEntityState. AttentionSpans
-// entiteter hör till plattformen attention_span, övriga till en annan integration.
-export function fakeHass({ notices = [], values = [], language = "sv" } = {}) {
+// entiteter hör till plattformen attention_span, groups till grupphjälparna (plattformen
+// group) och övriga till en annan integration.
+export function fakeHass({ notices = [], values = [], groups = [], language = "sv" } = {}) {
   const states = {};
   const entities = {};
   for (const stateObj of notices) {
@@ -55,11 +56,17 @@ export function fakeHass({ notices = [], values = [], language = "sv" } = {}) {
     states[stateObj.entity_id] = stateObj;
     entities[stateObj.entity_id] = { entity_id: stateObj.entity_id, platform: "template" };
   }
+  for (const stateObj of groups) {
+    states[stateObj.entity_id] = stateObj;
+    entities[stateObj.entity_id] = { entity_id: stateObj.entity_id, platform: "group" };
+  }
   return {
     states,
     entities,
     language,
-    locale: { language },
+    // Tider visas i serverns tidszon, som i HA:s profilinställning «Serverns tidszon».
+    locale: { language, time_zone: "server" },
+    config: { time_zone: "Europe/Stockholm" },
     formatEntityState: (stateObj) => {
       const unit = stateObj.attributes.unit_of_measurement;
       return unit ? `${stateObj.state} ${unit}` : stateObj.state;
@@ -79,4 +86,27 @@ export function renderCard(hass, config = {}) {
 // Den synliga texten i ett element, med blanktecken hopslagna.
 export function text(el) {
   return el.textContent.replace(/\s+/g, " ").trim();
+}
+
+// En entitet med attribut vars tillstånd har gällt i minutes minuter.
+export function entity(entityId, state, attributes = {}, minutes = 0) {
+  const changed = new Date(Date.now() - minutes * 60_000).toISOString();
+  return { entity_id: entityId, state, attributes, last_changed: changed };
+}
+
+// Som HA:s loadCardHelpers: createCardElement ger ett kortelement med konfigurationen.
+// created räknar de kort som har skapats.
+export const cardHelpers = { created: 0 };
+window.loadCardHelpers = async () => ({
+  createCardElement: (config) => {
+    cardHelpers.created += 1;
+    const el = document.createElement("hui-test-card");
+    el.config = config;
+    return el;
+  },
+});
+
+// Väntar tills kortet har laddat det som laddas i bakgrunden, till exempel loadCardHelpers.
+export function settled() {
+  return new Promise((resolve) => setImmediate(resolve));
 }

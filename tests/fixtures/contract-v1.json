@@ -83,5 +83,82 @@
       "icon": "mdi:washing-machine",
       "friendly_name": "Tvätten"
     }
+  },
+  "progress_ongoing": {
+    "entity_id": "sensor.attention_span_diskmaskinen",
+    "state": "ongoing",
+    "attributes": {
+      "options": ["alarm", "problem", "ongoing", "glance", "quiet", "hidden"],
+      "contract": 1,
+      "source": "rule",
+      "type": "progress",
+      "priority": 1,
+      "reason": null,
+      "entities": ["sensor.diskmaskin_klar"],
+      "since": "2026-10-26T08:00:00+00:00",
+      "device_class": "enum",
+      "icon": "mdi:dishwasher",
+      "friendly_name": "Diskmaskinen"
+    }
+  },
+  "upcoming_quiet": {
+    "entity_id": "sensor.attention_span_sophamtning",
+    "state": "quiet",
+    "attributes": {
+      "options": ["alarm", "problem", "ongoing", "glance", "quiet", "hidden"],
+      "contract": 1,
+      "source": "rule",
+      "type": "upcoming",
+      "priority": 1,
+      "reason": null,
+      "entities": ["calendar.sophamtning"],
+      "occurrences": [
+        {
+          "start": "2026-10-27T06:30:00+01:00",
+          "end": "2026-10-27T07:00:00+01:00",
+          "summary": "Restavfall"
+        },
+        { "start": "2026-10-29", "end": "2026-10-30", "summary": "Matavfall" }
+      ],
+      "since": "2026-10-26T08:00:00+00:00",
+      "device_class": "enum",
+      "icon": "mdi:trash-can",
+      "friendly_name": "Sophämtning"
+    }
+  },
+  "custom_glance": {
+    "entity_id": "sensor.attention_span_vadret",
+    "state": "glance",
+    "attributes": {
+      "options": ["alarm", "problem", "ongoing", "glance", "quiet", "hidden"],
+      "contract": 1,
+      "source": "rule",
+      "type": "custom",
+      "priority": 1,
+      "reason": null,
+      "entities": [],
+      "card": { "type": "weather-forecast", "entity": "weather.hemma", "show_forecast": false },
+      "since": "2026-10-26T08:00:00+00:00",
+      "device_class": "enum",
+      "icon": "mdi:weather-partly-cloudy",
+      "friendly_name": "Vädret"
+    }
+  },
+  "status_group_ongoing": {
+    "entity_id": "sensor.attention_span_fonster",
+    "state": "ongoing",
+    "attributes": {
+      "options": ["alarm", "problem", "ongoing", "glance", "quiet", "hidden"],
+      "contract": 1,
+      "source": "rule",
+      "type": "status",
+      "priority": 1,
+      "reason": null,
+      "entities": ["binary_sensor.fonster"],
+      "since": "2026-10-26T08:00:00+00:00",
+      "device_class": "enum",
+      "icon": "mdi:window-open-variant",
+      "friendly_name": "Fönster"
+    }
   }
 }

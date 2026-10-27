@@ -16,6 +16,9 @@ from .conftest import (
     start_rule_reconfigure,
 )
 
+UPCOMING = {"name": "Buss", "entities": ["sensor.buss_nasta"], "count": 3}
+CUSTOM = {"name": "Vädret", "card": {"type": "weather-forecast", "entity": "weather.hemma"}}
+
 TRANSLATIONS = pathlib.Path(__file__).parents[1] / "custom_components" / DOMAIN / "translations"
 
 
@@ -61,6 +64,13 @@ async def _shown_keys(hass: HomeAssistant) -> set[str]:
     keys |= _form_keys(rule, result)
     result = await start_rule(hass, entry, "value")
     keys |= _form_keys(rule, result) | {f"{rule}.error.name_required"}
+    for rule_type in ("progress", "upcoming", "custom"):
+        keys |= _form_keys(rule, await start_rule(hass, entry, rule_type))
+    keys |= {
+        f"{rule}.error.progress_entity",
+        f"{rule}.error.entities_required",
+        f"{rule}.error.invalid_card",
+    }
     result = await start_rule(hass, entry, "status")
     keys |= _form_keys(rule, result)
     result = await hass.config_entries.subentries.async_configure(result["flow_id"], BILEN)
@@ -76,6 +86,10 @@ async def _shown_keys(hass: HomeAssistant) -> set[str]:
     subentry_id = await add_rule(hass, entry, "value", BILEN, ALWAYS_GLANCE)
     result = await start_rule_reconfigure(hass, entry, subentry_id)
     keys |= _form_keys(rule, result) | {f"{rule}.abort.reconfigure_successful"}
+    # Ändra-formuläret visar fälten för regelns typ.
+    for rule_type, fields in (("upcoming", UPCOMING), ("custom", CUSTOM)):
+        subentry_id = await add_rule(hass, entry, rule_type, fields, ALWAYS_GLANCE)
+        keys |= _form_keys(rule, await start_rule_reconfigure(hass, entry, subentry_id))
 
     state = hass.states.get("sensor.attention_span_bilen")
     keys |= {f"entity.sensor.rule.state.{option}" for option in state.attributes["options"]}

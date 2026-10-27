@@ -37,6 +37,18 @@
             "entity": "Entiteten vars tillstånd notisen visar."
           }
         },
+        "progress": {
+          "title": "Förlopp",
+          "description": "Tid kvar eller procent med en stapel, till exempel diskmaskinen.",
+          "data": {
+            "name": "Namn",
+            "icon": "Ikon",
+            "entity": "Entitet"
+          },
+          "data_description": {
+            "entity": "En timer, en sensor med en sluttid eller en sensor i procent."
+          }
+        },
         "value": {
           "title": "Värde",
           "description": "Ett tal med enhet, till exempel bilens laddning.",
@@ -49,15 +61,47 @@
             "entity": "En numerisk sensor."
           }
         },
+        "upcoming": {
+          "title": "Kommande",
+          "description": "Nästa tillfälle eller de närmaste, till exempel sophämtning eller bussar.",
+          "data": {
+            "name": "Namn",
+            "icon": "Ikon",
+            "entities": "Kalendrar och sensorer",
+            "count": "Antal"
+          },
+          "data_description": {
+            "entities": "Kalendrar och sensorer vars tillstånd är en tidpunkt.",
+            "count": "Hur många av de närmaste tillfällena som notisen visar."
+          }
+        },
+        "custom": {
+          "title": "Eget kort",
+          "description": "Valfri Lovelace-kortkonfiguration, för det som ingen annan typ passar.",
+          "data": {
+            "name": "Namn",
+            "icon": "Ikon",
+            "card": "Kort"
+          },
+          "data_description": {
+            "card": "Kortets konfiguration som i en dashboard, till exempel type: weather-forecast."
+          }
+        },
         "reconfigure": {
           "title": "Ändra regel",
           "data": {
             "name": "Namn",
             "icon": "Ikon",
-            "entity": "Entitet"
+            "entity": "Entitet",
+            "entities": "Kalendrar och sensorer",
+            "count": "Antal",
+            "card": "Kort"
           },
           "data_description": {
-            "entity": "Entiteten som notisen visar."
+            "entity": "Entiteten som notisen visar.",
+            "entities": "Kalendrar och sensorer vars tillstånd är en tidpunkt.",
+            "count": "Hur många av de närmaste tillfällena som notisen visar.",
+            "card": "Kortets konfiguration som i en dashboard, till exempel type: weather-forecast."
           }
         },
         "levels": {
@@ -91,7 +135,10 @@
         "name_required": "Ange ett namn.",
         "level_required": "Välj Alltid eller Villkor för minst en nivå.",
         "condition_required": "Lägg till ett villkor, eller välj Inget eller Alltid för nivån.",
-        "invalid_condition": "Villkoret är ogiltigt."
+        "invalid_condition": "Villkoret är ogiltigt.",
+        "progress_entity": "Välj en timer, en sensor med en sluttid eller en sensor i procent.",
+        "entities_required": "Välj minst en kalender eller sensor.",
+        "invalid_card": "Ange en kortkonfiguration med type, till exempel type: weather-forecast."
       },
       "abort": {
         "reconfigure_successful": "Regeln har ändrats."
@@ -102,7 +149,10 @@
     "type": {
       "options": {
         "status": "Status",
-        "value": "Värde"
+        "progress": "Förlopp",
+        "value": "Värde",
+        "upcoming": "Kommande",
+        "custom": "Eget kort"
       }
     },
     "level_mode": {
