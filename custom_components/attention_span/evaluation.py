@@ -220,7 +220,8 @@ class _LastingCondition(ConditionChecker):
         """Om en entitet i villkoret väntar på att dess integration ska laddas.
 
         HA visar den då som otillgänglig med restored: true, vilket inte säger något om
-        villkoret. När det började gälla sparas tills entiteten har ett riktigt tillstånd.
+        villkoret. Till dess gäller villkoret som före omstarten, och när det började gälla
+        sparas tills entiteten har ett riktigt tillstånd.
         """
         return any(
             (state := self._hass.states.get(entity_id)) is not None
@@ -253,7 +254,7 @@ class _LastingCondition(ConditionChecker):
     @override
     def _async_check(self, **kwargs: Unpack[ConditionCheckParams]) -> bool | None:
         # Ett avstängt villkor (enabled) gäller varken eller, som i HA.
-        if (held := self._timed.async_check(**kwargs)) is not False or self._waiting():
+        if (held := self._timed.async_check(**kwargs)) is not False:
             return held
         since = self._started.get(self._key)
         return since is not None and since < self._cutoff()

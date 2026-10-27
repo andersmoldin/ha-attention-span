@@ -265,11 +265,13 @@ async def test_an_entity_waiting_for_its_integration_after_a_restart_keeps_its_t
         entry,
         "status",
         YTTERDORREN,
-        {"problem": "condition", "ongoing": "condition"},
-        {"problem": [DOOR_OPEN | {"for": {"minutes": 30}}], "ongoing": [DOOR_OPEN]},
+        {"alarm": "condition", "ongoing": "condition"},
+        {"alarm": [DOOR_OPEN | {"for": {"minutes": 30}}], "ongoing": [DOOR_OPEN]},
     )
     await tick(hass, freezer, timedelta(minutes=20, seconds=1))
-    assert hass.states.get("sensor.attention_span_ytterdorren").state == "problem"
+    state = hass.states.get("sensor.attention_span_ytterdorren")
+    assert state.state == "alarm"
+    assert state.attributes["since"] == "2026-10-26T08:20:01+00:00"
     freezer.move_to("2026-10-26T09:00:00+00:00")
 
     async with restart(hass) as hass:
@@ -277,9 +279,14 @@ async def test_an_entity_waiting_for_its_integration_after_a_restart_keeps_its_t
         await start(hass)
         await tick(hass, freezer, timedelta(seconds=5))
 
+        state = hass.states.get("sensor.attention_span_ytterdorren")
+        assert state.state == "alarm"
+        assert state.attributes["since"] == "2026-10-26T08:20:01+00:00"
+
         hass.states.async_set("binary_sensor.ytterdorr", "on")
         await hass.async_block_till_done()
 
         state = hass.states.get("sensor.attention_span_ytterdorren")
-        assert state.state == "problem"
+        assert state.state == "alarm"
+        assert state.attributes["since"] == "2026-10-26T08:20:01+00:00"
         assert state.attributes["state_since"] == "2026-10-26T07:50:00+00:00"
