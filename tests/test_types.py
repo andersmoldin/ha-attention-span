@@ -240,6 +240,29 @@ async def test_upcoming_follows_time_and_its_sources(hass: HomeAssistant, freeze
     assert starts(hass, entity_id) == ["2026-10-29", "2026-11-03T06:30:00+01:00"]
 
 
+async def test_upcoming_drops_a_passed_occurrence_behind_an_ongoing_all_day_event(
+    hass: HomeAssistant, freezer, add_calendar
+):
+    await hass.config.async_set_time_zone("Europe/Stockholm")
+    freezer.move_to("2026-10-29T07:00:00+00:00")
+    await add_calendar(*SOPHAMTNING)
+    hass.states.async_set("sensor.buss_nasta", "2026-10-29T07:07:00+00:00")
+    entry = await add_integration(hass)
+    await add_rule(
+        hass,
+        entry,
+        "upcoming",
+        SOPOR | {"entities": ["calendar.sophamtning", "sensor.buss_nasta"]},
+        {"quiet": "always"},
+    )
+    entity_id = "sensor.attention_span_sophamtning"
+    assert starts(hass, entity_id) == ["2026-10-29", "2026-10-29T08:07:00+01:00"]
+
+    # Bussen går medan matavfallet fortfarande pågår, utan att någon källa ändras.
+    await tick(hass, freezer, timedelta(minutes=7))
+    assert starts(hass, entity_id) == ["2026-10-29", "2026-11-03T06:30:00+01:00"]
+
+
 async def test_upcoming_picks_up_changed_calendar_events(
     hass: HomeAssistant, freezer, add_calendar
 ):

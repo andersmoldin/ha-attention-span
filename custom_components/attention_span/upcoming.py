@@ -141,7 +141,7 @@ def _passes_at(occurrence: Occurrence) -> datetime:
 class Upcoming:
     """Håller de närmaste tillfällena aktuella och lämnar dem till on_change.
 
-    Tillfällena läses om när en källa ändras, när det första tillfället passerar och,
+    Tillfällena läses om när en källa ändras, när något av dem passerar och,
     med kalendrar bland källorna, med jämna mellanrum.
     """
 
@@ -166,7 +166,7 @@ class Upcoming:
         self._cancel_passes()
         if occurrences:
             self._unsub_passes = async_track_point_in_utc_time(
-                self._hass, self._refresh, _passes_at(occurrences[0])
+                self._hass, self._refresh, min(_passes_at(o) for o in occurrences)
             )
         self._on_change(occurrences)
 
