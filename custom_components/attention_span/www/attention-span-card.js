@@ -44,6 +44,22 @@ const STYLE = `
   .quiet b { font-weight: 500; color: var(--primary-text-color); white-space: nowrap; }
   .quiet small { font-size: inherit; }
   small { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bar { position: relative; height: 6px; border-radius: 3px; overflow: hidden;
+    background: var(--divider-color); }
+  .bar i { position: absolute; top: 0; bottom: 0; left: 0; border-radius: 3px;
+    background: var(--info-color); }
+  .alarm .bar i { background: var(--error-color); }
+  .problem .bar i { background: var(--warning-color); }
+  .notice .bar { margin-top: 8px; }
+  .glance .bar, .quiet .bar { flex: 1 1 48px; min-width: 32px; }
+  .notice span { flex: 1; }
+  .notice.custom { flex-direction: column; align-items: stretch; }
+  .custom .head { display: flex; align-items: center; gap: 12px; }
+  .glance.custom, .quiet.custom { display: block; }
+  [role="button"] { cursor: pointer; }
+  /* Det inbäddade kortet ligger i notisen: utan egen ram, skugga och bakgrund. */
+  .custom { --ha-card-border-width: 0; --ha-card-box-shadow: none;
+    --ha-card-background: transparent; }
 `;
 
 // Hur ofta kortet ritas om för att «hur länge» ska stämma.
@@ -68,13 +84,65 @@ function textElement(tag, text) {
   return el;
 }
 
+// Stapeln för Förlopp, eller inget när notisen inte har någon.
+function barElements(row) {
+  if (row.fraction === null) return [];
+  const el = document.createElement("div");
+  el.className = "bar";
+  const fill = document.createElement("i");
+  fill.style.width = `${row.fraction * 100}%`;
+  el.append(fill);
+  return [el];
+}
+
+// En notis som visar mer i HA:s detaljdialog: öppnas med tryck, Enter eller mellanslag.
+function moreInfo(el, row) {
+  if (!row.moreInfo) return el;
+  el.setAttribute("role", "button");
+  el.tabIndex = 0;
+  const open = () =>
+    el.dispatchEvent(
+      new CustomEvent("hass-more-info", {
+        detail: { entityId: row.moreInfo },
+        bubbles: true,
+        composed: true,
+      }),
+    );
+  el.addEventListener("click", open);
+  el.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    open();
+  });
+  return el;
+}
+
 // Larm, Problem och Pågår: ett eget kort per notis, med namnet över det Typen visar.
 function noticeElement(row, level) {
   const el = document.createElement("ha-card");
   el.className = `notice ${level}`;
   const body = document.createElement("span");
-  body.append(textElement("b", row.name), " ", textElement("small", row.text));
+  body.append(textElement("b", row.name), " ", textElement("small", row.text), ...barElements(row));
   el.append(iconElement(row), body);
+  return moreInfo(el, row);
+}
+
+// Eget kort på Larm, Problem och Pågår: ikonen och namnet över det inbäddade kortet.
+function customNoticeElement(row, level, embedded) {
+  const el = document.createElement("ha-card");
+  el.className = `notice ${level} custom`;
+  const head = document.createElement("div");
+  head.className = "head";
+  head.append(iconElement(row), textElement("b", row.name));
+  el.append(head, ...embedded);
+  return el;
+}
+
+// Eget kort på Blick och Tyst: det inbäddade kortet som en rad.
+function customRowElement(level, embedded) {
+  const el = document.createElement("div");
+  el.className = `${level} custom`;
+  el.append(...embedded);
   return el;
 }
 
@@ -83,11 +151,20 @@ function rowElement(row, level) {
   const el = document.createElement("div");
   el.className = level;
   const [first, second] = row.type === "value" ? [row.text, row.name] : [row.name, row.text];
-  el.append(iconElement(row), textElement("b", first), " ", textElement("small", second));
-  return el;
+  el.append(
+    iconElement(row),
+    textElement("b", first),
+    " ",
+    textElement("small", second),
+    ...barElements(row),
+  );
+  return moreInfo(el, row);
 }
 
 class AttentionSpanCard extends HTMLElement {
+  // De inbäddade korten för Eget kort, per notis: konfigurationen och kortelementet.
+  _cards = new Map();
+
   static getStubConfig() {
     return {};
   }
@@ -122,24 +199,60 @@ class AttentionSpanCard extends HTMLElement {
     const calmText = strings(this._hass).calm;
     // HA skickar hass vid varje tillståndsändring i hela systemet. Rita bara om när det
     // kortet visar har ändrats, så att korten och ikonerna inte byggs om i onödan.
+    // De inbäddade korten visar egna entiteter och behöver varje ny hass ändå.
+    for (const { el } of this._cards.values()) el.hass = this._hass;
     const drawn = JSON.stringify([model, calmText]);
     if (drawn === this._drawn) return;
     this._drawn = drawn;
+    const levels = [...NEEDS_ATTENTION, "glance", "quiet"];
+    this._keepCards(levels.flatMap((level) => model[level]));
+    const drawRow = (row, level) =>
+      row.type === "custom" ? customRowElement(level, this._embedded(row)) : rowElement(row, level);
+    const drawNotice = (row, level) =>
+      row.type === "custom"
+        ? customNoticeElement(row, level, this._embedded(row))
+        : noticeElement(row, level);
     const rows = [
       ...(model.calm ? [calmElement(calmText)] : []),
-      ...model.glance.map((row) => rowElement(row, "glance")),
-      ...model.quiet.map((row) => rowElement(row, "quiet")),
+      ...model.glance.map((row) => drawRow(row, "glance")),
+      ...model.quiet.map((row) => drawRow(row, "quiet")),
     ];
     const rowsCard = document.createElement("ha-card");
     rowsCard.append(...rows);
     this.shadowRoot
       .querySelector(".stack")
       .replaceChildren(
-        ...NEEDS_ATTENTION.flatMap((level) =>
-          model[level].map((row) => noticeElement(row, level)),
-        ),
+        ...NEEDS_ATTENTION.flatMap((level) => model[level].map((row) => drawNotice(row, level))),
         ...(rows.length ? [rowsCard] : []),
       );
+  }
+
+  // Glöm de inbäddade korten för notiser som inte visas längre, och ladda HA:s verktyg för
+  // att skapa kort första gången ett Eget kort ska visas.
+  _keepCards(rows) {
+    const ids = new Set(rows.filter((row) => row.type === "custom").map((row) => row.id));
+    for (const id of this._cards.keys()) if (!ids.has(id)) this._cards.delete(id);
+    if (ids.size && !this._helpers && !this._loadingHelpers && window.loadCardHelpers) {
+      this._loadingHelpers = window.loadCardHelpers().then((helpers) => {
+        this._helpers = helpers;
+        this._drawn = null;
+        this._render();
+      });
+    }
+  }
+
+  // Det inbäddade kortet för ett Eget kort, återanvänt så länge konfigurationen är densamma.
+  // Inget förrän HA:s verktyg för att skapa kort har laddats.
+  _embedded(row) {
+    if (!this._helpers) return [];
+    const config = JSON.stringify(row.card);
+    let card = this._cards.get(row.id);
+    if (card?.config !== config) {
+      card = { config, el: this._helpers.createCardElement(row.card) };
+      this._cards.set(row.id, card);
+    }
+    card.el.hass = this._hass;
+    return [card.el];
   }
 }
 

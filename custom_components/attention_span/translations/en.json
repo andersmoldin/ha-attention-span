@@ -37,6 +37,18 @@
             "entity": "The entity whose state the notice shows."
           }
         },
+        "progress": {
+          "title": "Progress",
+          "description": "Time left or percent with a bar, for example the dishwasher.",
+          "data": {
+            "name": "Name",
+            "icon": "Icon",
+            "entity": "Entity"
+          },
+          "data_description": {
+            "entity": "A timer, a sensor with an end time or with time left, or a sensor in percent."
+          }
+        },
         "value": {
           "title": "Value",
           "description": "A number with a unit, for example the car's charge.",
@@ -49,15 +61,47 @@
             "entity": "A numeric sensor."
           }
         },
+        "upcoming": {
+          "title": "Upcoming",
+          "description": "The next occurrence or the next few, for example waste collection or buses.",
+          "data": {
+            "name": "Name",
+            "icon": "Icon",
+            "entities": "Calendars and sensors",
+            "count": "Count"
+          },
+          "data_description": {
+            "entities": "Calendars and sensors whose state is a timestamp.",
+            "count": "How many of the next occurrences the notice shows."
+          }
+        },
+        "custom": {
+          "title": "Custom card",
+          "description": "Any Lovelace card configuration, for content no other type fits.",
+          "data": {
+            "name": "Name",
+            "icon": "Icon",
+            "card": "Card"
+          },
+          "data_description": {
+            "card": "The card's configuration as in a dashboard, for example type: weather-forecast."
+          }
+        },
         "reconfigure": {
           "title": "Change rule",
           "data": {
             "name": "Name",
             "icon": "Icon",
-            "entity": "Entity"
+            "entity": "Entity",
+            "entities": "Calendars and sensors",
+            "count": "Count",
+            "card": "Card"
           },
           "data_description": {
-            "entity": "The entity the notice shows."
+            "entity": "The entity the notice shows.",
+            "entities": "Calendars and sensors whose state is a timestamp.",
+            "count": "How many of the next occurrences the notice shows.",
+            "card": "The card's configuration as in a dashboard, for example type: weather-forecast."
           }
         },
         "levels": {
@@ -91,7 +135,10 @@
         "name_required": "Enter a name.",
         "level_required": "Choose Always or Condition for at least one level.",
         "condition_required": "Add a condition, or choose None or Always for the level.",
-        "invalid_condition": "The condition is not valid."
+        "invalid_condition": "The condition is not valid.",
+        "progress_entity": "Choose a timer, a sensor with an end time or with time left, or a sensor in percent.",
+        "entities_required": "Choose at least one calendar or sensor.",
+        "invalid_card": "Enter a card configuration with a type, for example type: weather-forecast."
       },
       "abort": {
         "reconfigure_successful": "The rule has been updated."
@@ -102,7 +149,10 @@
     "type": {
       "options": {
         "status": "Status",
-        "value": "Value"
+        "progress": "Progress",
+        "value": "Value",
+        "upcoming": "Upcoming",
+        "custom": "Custom card"
       }
     },
     "level_mode": {

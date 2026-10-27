@@ -14,6 +14,8 @@ from homeassistant.util import dt as dt_util
 from homeassistant.util import slugify
 
 from .const import (
+    CONF_CARD,
+    CONF_COUNT,
     CONF_ENTITIES,
     CONF_HIDE,
     CONF_ICON,
@@ -26,8 +28,11 @@ from .const import (
     LEVELS,
     SOURCE_RULE,
     SUBENTRY_RULE,
+    TYPE_CUSTOM,
+    TYPE_UPCOMING,
 )
 from .evaluation import RuleLevel
+from .upcoming import Occurrence, Upcoming
 
 
 async def async_setup_entry(
@@ -62,6 +67,10 @@ class RuleSensor(SensorEntity, RestoreEntity):
             "entities": list(data[CONF_ENTITIES]),
             "since": dt_util.utcnow().isoformat(),
         }
+        if data[CONF_TYPE] == TYPE_UPCOMING:
+            self._attr_extra_state_attributes["occurrences"] = []
+        if data[CONF_TYPE] == TYPE_CUSTOM:
+            self._attr_extra_state_attributes["card"] = data[CONF_CARD]
 
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
@@ -86,6 +95,18 @@ class RuleSensor(SensorEntity, RestoreEntity):
     async def _async_start(self, hass: HomeAssistant) -> None:
         self._async_reevaluate()
         self.async_on_remove(await self._evaluation.async_track(hass, self._async_reevaluate))
+        if self._rule[CONF_TYPE] == TYPE_UPCOMING:
+            upcoming = Upcoming(
+                hass, self._rule[CONF_ENTITIES], self._rule[CONF_COUNT], self._async_occurrences
+            )
+            self.async_on_remove(await upcoming.async_start())
+
+    @callback
+    def _async_occurrences(self, occurrences: list[Occurrence]) -> None:
+        if occurrences == self._attr_extra_state_attributes["occurrences"]:
+            return
+        self._attr_extra_state_attributes["occurrences"] = occurrences
+        self.async_write_ha_state()
 
     @callback
     def _async_reevaluate(self) -> None:

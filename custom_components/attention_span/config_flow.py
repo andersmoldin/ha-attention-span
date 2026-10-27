@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
+from homeassistant.components.sensor import SensorDeviceClass
 from homeassistant.config_entries import (
     SOURCE_RECONFIGURE,
     ConfigEntry,
@@ -13,14 +14,23 @@ from homeassistant.config_entries import (
     ConfigSubentryFlow,
     SubentryFlowResult,
 )
-from homeassistant.const import CONF_NAME
-from homeassistant.core import callback
+from homeassistant.const import (
+    ATTR_DEVICE_CLASS,
+    ATTR_UNIT_OF_MEASUREMENT,
+    CONF_NAME,
+    PERCENTAGE,
+)
+from homeassistant.core import HomeAssistant, State, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.selector import (
     ConditionSelector,
     EntitySelector,
     EntitySelectorConfig,
     IconSelector,
+    NumberSelector,
+    NumberSelectorConfig,
+    NumberSelectorMode,
+    ObjectSelector,
     SelectSelector,
     SelectSelectorConfig,
     SelectSelectorMode,
@@ -29,6 +39,8 @@ from homeassistant.helpers.selector import (
 
 from .const import (
     ALWAYS,
+    CONF_CARD,
+    CONF_COUNT,
     CONF_ENTITIES,
     CONF_HIDE,
     CONF_ICON,
@@ -38,7 +50,10 @@ from .const import (
     DOMAIN,
     LEVELS,
     SUBENTRY_RULE,
+    TYPE_CUSTOM,
+    TYPE_PROGRESS,
     TYPE_STATUS,
+    TYPE_UPCOMING,
     TYPE_VALUE,
     TYPES,
 )
@@ -51,6 +66,8 @@ CONF_ENTITY = "entity"
 LEVEL_NONE = "none"
 LEVEL_CONDITION = "condition"
 LEVEL_MODES = (LEVEL_NONE, ALWAYS, LEVEL_CONDITION)
+# Flest tillfällen som Kommande kan visa; fler får inte plats på en rad.
+MAX_COUNT = 10
 
 
 class AttentionSpanConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -93,10 +110,40 @@ class _ConditionField(ConditionSelector):
         return data
 
 
-def _fields_schema(rule_type: str, current: Mapping[str, Any]) -> vol.Schema:
-    """Fälten som typen kräver: namn, ikon och entiteten som notisen visar."""
-    # Värde visar ett tal; Status visar vilken entitet som helst.
+def _shown_schema(rule_type: str, current: Mapping[str, Any]) -> dict[Any, Any]:
+    """Fälten för det som typen visar."""
+    if rule_type == TYPE_CUSTOM:
+        return {
+            vol.Required(CONF_CARD, description={"suggested_value": current.get(CONF_CARD)}): (
+                ObjectSelector()
+            ),
+        }
+    if rule_type == TYPE_UPCOMING:
+        # Kalendrar och sensorer vars tillstånd är en tidpunkt.
+        sources = EntitySelectorConfig(
+            multiple=True,
+            filter=[{"domain": "calendar"}, {"domain": "sensor", "device_class": "timestamp"}],
+        )
+        count = NumberSelectorConfig(
+            min=1, max=MAX_COUNT, step=1, mode=NumberSelectorMode.BOX
+        )
+        return {
+            vol.Required(CONF_ENTITIES, default=current.get(CONF_ENTITIES, vol.UNDEFINED)): (
+                EntitySelector(sources)
+            ),
+            vol.Required(CONF_COUNT, default=current.get(CONF_COUNT, 1)): NumberSelector(count),
+        }
+    # Värde visar ett tal; Status och Förlopp visar vilken entitet som helst.
     entity = EntitySelectorConfig(domain="sensor") if rule_type == TYPE_VALUE else None
+    return {
+        vol.Required(CONF_ENTITY, default=current.get(CONF_ENTITY, vol.UNDEFINED)): (
+            EntitySelector(entity)
+        ),
+    }
+
+
+def _fields_schema(rule_type: str, current: Mapping[str, Any]) -> vol.Schema:
+    """Fälten som typen kräver: namn, ikon och det som notisen visar."""
     return vol.Schema(
         {
             vol.Required(CONF_NAME, default=current.get(CONF_NAME, vol.UNDEFINED)): (
@@ -105,15 +152,65 @@ def _fields_schema(rule_type: str, current: Mapping[str, Any]) -> vol.Schema:
             vol.Optional(CONF_ICON, description={"suggested_value": current.get(CONF_ICON)}): (
                 IconSelector()
             ),
-            vol.Required(CONF_ENTITY, default=current.get(CONF_ENTITY, vol.UNDEFINED)): (
-                EntitySelector(entity)
-            ),
+            **_shown_schema(rule_type, current),
         }
     )
 
 
-def _name_errors(user_input: Mapping[str, Any]) -> dict[str, str]:
-    return {} if user_input[CONF_NAME].strip() else {CONF_NAME: "name_required"}
+def _shown_data(rule_type: str, fields: Mapping[str, Any]) -> dict[str, Any]:
+    """Det som typen visar, som det sparas i regeln, ur formulärets fält."""
+    if rule_type == TYPE_CUSTOM:
+        # Entiteterna står i kortkonfigurationen, i den form som kortet själv bestämmer.
+        return {CONF_ENTITIES: [], CONF_CARD: fields[CONF_CARD]}
+    if rule_type == TYPE_UPCOMING:
+        return {CONF_ENTITIES: list(fields[CONF_ENTITIES]), CONF_COUNT: int(fields[CONF_COUNT])}
+    return {CONF_ENTITIES: [fields[CONF_ENTITY]]}
+
+
+def _shown_fields(data: Mapping[str, Any]) -> dict[str, Any]:
+    """Formulärets fält för det som en sparad regel visar."""
+    if data[CONF_TYPE] == TYPE_CUSTOM:
+        return {CONF_CARD: data[CONF_CARD]}
+    if data[CONF_TYPE] == TYPE_UPCOMING:
+        return {CONF_ENTITIES: data[CONF_ENTITIES], CONF_COUNT: data[CONF_COUNT]}
+    return {CONF_ENTITY: data[CONF_ENTITIES][0]}
+
+
+def _shows_progress(state: State | None) -> bool:
+    """Om entiteten visar tid kvar eller procent: en timer, en sluttid, tid kvar eller procent."""
+    if state is None:
+        return False
+    attributes = state.attributes
+    return (
+        state.domain == "timer"
+        or attributes.get(ATTR_DEVICE_CLASS)
+        in (SensorDeviceClass.TIMESTAMP, SensorDeviceClass.DURATION)
+        or attributes.get(ATTR_UNIT_OF_MEASUREMENT) == PERCENTAGE
+    )
+
+
+def _is_card(config: Any) -> bool:
+    """Om det är en Lovelace-kortkonfiguration: något med en korttyp."""
+    return (
+        isinstance(config, Mapping)
+        and isinstance(card_type := config.get("type"), str)
+        and bool(card_type.strip())
+    )
+
+
+def _fields_errors(
+    hass: HomeAssistant, rule_type: str, user_input: Mapping[str, Any]
+) -> dict[str, str]:
+    errors = {} if user_input[CONF_NAME].strip() else {CONF_NAME: "name_required"}
+    if rule_type == TYPE_CUSTOM and not _is_card(user_input[CONF_CARD]):
+        errors[CONF_CARD] = "invalid_card"
+    if rule_type == TYPE_UPCOMING and not user_input[CONF_ENTITIES]:
+        errors[CONF_ENTITIES] = "entities_required"
+    if rule_type == TYPE_PROGRESS and not _shows_progress(
+        hass.states.get(user_input[CONF_ENTITY])
+    ):
+        errors[CONF_ENTITY] = "progress_entity"
+    return errors
 
 
 def _level_modes(levels: Mapping[str, Any]) -> dict[str, str]:
@@ -148,10 +245,25 @@ class RuleSubentryFlow(ConfigSubentryFlow):
     ) -> SubentryFlowResult:
         return await self._async_step_fields(TYPE_STATUS, user_input)
 
+    async def async_step_progress(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        return await self._async_step_fields(TYPE_PROGRESS, user_input)
+
     async def async_step_value(
         self, user_input: dict[str, Any] | None = None
     ) -> SubentryFlowResult:
         return await self._async_step_fields(TYPE_VALUE, user_input)
+
+    async def async_step_upcoming(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        return await self._async_step_fields(TYPE_UPCOMING, user_input)
+
+    async def async_step_custom(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        return await self._async_step_fields(TYPE_CUSTOM, user_input)
 
     async def async_step_reconfigure(
         self, user_input: dict[str, Any] | None = None
@@ -163,7 +275,7 @@ class RuleSubentryFlow(ConfigSubentryFlow):
         self._current = {
             CONF_NAME: subentry.title,
             CONF_ICON: data.get(CONF_ICON),
-            CONF_ENTITY: data[CONF_ENTITIES][0],
+            **_shown_fields(data),
             CONF_LEVELS: data[CONF_LEVELS],
             CONF_HIDE: data.get(CONF_HIDE),
         }
@@ -173,7 +285,9 @@ class RuleSubentryFlow(ConfigSubentryFlow):
         self, step_id: str, user_input: dict[str, Any] | None = None
     ) -> SubentryFlowResult:
         errors: dict[str, str] = {}
-        if user_input is not None and not (errors := _name_errors(user_input)):
+        if user_input is not None and not (
+            errors := _fields_errors(self.hass, self._type, user_input)
+        ):
             self._fields = user_input
             return await self.async_step_levels()
         return self.async_show_form(
@@ -256,7 +370,7 @@ class RuleSubentryFlow(ConfigSubentryFlow):
     def _async_finish(self, conditions: Mapping[str, Any]) -> SubentryFlowResult:
         data: dict[str, Any] = {
             CONF_TYPE: self._type,
-            CONF_ENTITIES: [self._fields[CONF_ENTITY]],
+            **_shown_data(self._type, self._fields),
             CONF_LEVELS: {
                 level: ALWAYS if mode == ALWAYS else conditions[level]
                 for level, mode in self._modes.items()

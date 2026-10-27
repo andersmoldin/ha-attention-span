@@ -151,6 +151,7 @@ Attributnamnen är ett versionerat, dokumenterat kontrakt så att tredjepartskor
 | `realarm_at` | När ett kvitterat larm larmar igen |
 | `snoozed` | Om notisen ligger åt sidan |
 | `snoozed_until` | Till när; `null` med `snoozed: true` betyder «tills det är lagat» |
+| `occurrences` | De närmaste tillfällena, först det tidigaste, bara för typen `upcoming`. Varje tillfälle har `start`, `end` och `summary`; heldag anges som datum, och för en sensor med tidpunkter är `end` och `summary` `null` |
 | `card` | Kortkonfigurationen, bara för typen `custom` |
 | `integrations` | Trasiga integrationer, bara på `sensor.attention_span_integrations` |
 

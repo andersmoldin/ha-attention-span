@@ -1,7 +1,17 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { fakeHass, notice, renderCard, status, text, value } from "./fake-hass.mjs";
+import {
+  cardHelpers,
+  entity,
+  fakeHass,
+  notice,
+  renderCard,
+  settled,
+  status,
+  text,
+  value,
+} from "./fake-hass.mjs";
 
 const BILEN = value("sensor.bilen_batteri", "52", "%");
 const ELPRIS = value("sensor.elpris", "42", "öre/kWh");
@@ -174,9 +184,9 @@ test("kortet ritas om när det som visas ändras, inte när andra entiteter änd
   assert.equal(text(root.querySelector(".glance")), "53 % Bilen");
 });
 
-test("notiser av en Typ som kortet ännu inte kan rita ritas inte som Värde", () => {
+test("notiser av en Typ som kortet inte känner till ritas inte som Värde", () => {
   const root = renderCard(
-    fakeHass({ notices: [notice("value_glance", { attributes: { type: "progress" } })], values: [BILEN] }),
+    fakeHass({ notices: [notice("value_glance", { attributes: { type: "graph" } })], values: [BILEN] }),
   );
 
   assert.equal(root.querySelectorAll(".glance, .quiet").length, 0);
@@ -305,4 +315,294 @@ test("hur länge räknas upp medan kortet visas, utan att något annat ändras",
   t.mock.timers.tick(60_000);
 
   assert.equal(text(root.querySelector(".notice")), "Ytterdörren Öppen i 11 min");
+});
+
+const NOW = Date.parse("2026-10-26T08:00:00Z");
+
+// Stapelns fyllnad i procent, eller null utan stapel.
+function bar(el) {
+  const fill = el.querySelector(".bar i");
+  return fill ? parseFloat(fill.style.width) : null;
+}
+
+// Diskmaskinen fick nivån Pågår för 20 min sedan.
+const DISKEN = notice("progress_ongoing", { attributes: { since: "2026-10-26T07:40:00+00:00" } });
+
+test("Förlopp med en sluttid visar tid kvar och en stapel från när notisen fick sin nivå", (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: NOW });
+  // Sluttiden är om 40 min och notisen fick sin nivå för 20 min sedan: en tredjedel har gått.
+  // Maskinen justerade sluttiden för 1 min sedan, vilket inte ska nollställa stapeln.
+  const klar = entity(
+    "sensor.diskmaskin_klar",
+    "2026-10-26T08:40:00+00:00",
+    { device_class: "timestamp" },
+    1,
+  );
+  const root = renderCard(fakeHass({ notices: [DISKEN], values: [klar] }));
+
+  const card = root.querySelector(".notice.ongoing");
+  assert.equal(text(card), "Diskmaskinen 40 min kvar");
+  assert.equal(Math.round(bar(card)), 33);
+});
+
+test("Förlopp i procent visar procenten och en lika lång stapel, även som Blick-rad", () => {
+  const skrivaren = entity("sensor.diskmaskin_klar", "62", { unit_of_measurement: "%" });
+  const root = renderCard(
+    fakeHass({ notices: [notice("progress_ongoing", { state: "glance" })], values: [skrivaren] }),
+  );
+
+  const row = root.querySelector(".glance");
+  assert.equal(text(row), "Diskmaskinen 62 %");
+  assert.equal(bar(row), 62);
+});
+
+test("Förlopp med en timer visar tid kvar, även när timern är pausad", (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: NOW });
+  const active = entity("timer.agg", "active", {
+    duration: "0:08:00",
+    remaining: "0:08:00",
+    finishes_at: "2026-10-26T08:06:00+00:00",
+  });
+  const paused = entity("timer.agg", "paused", { duration: "0:08:00", remaining: "0:02:00" });
+
+  for (const [timer, shown, done] of [
+    [active, "6 min kvar", 25],
+    [paused, "2 min kvar", 75],
+  ]) {
+    const root = renderCard(
+      fakeHass({
+        notices: [notice("progress_ongoing", { state: "problem", attributes: { entities: ["timer.agg"] } })],
+        values: [timer],
+      }),
+    );
+
+    const card = root.querySelector(".notice.problem");
+    assert.equal(text(card), `Diskmaskinen ${shown}`, timer.state);
+    assert.equal(bar(card), done, timer.state);
+  }
+});
+
+test("Förlopp utan tid kvar eller procent visar tillståndet utan stapel", () => {
+  const idle = entity("timer.agg", "idle", { duration: "0:08:00", remaining: "0:08:00" });
+  const root = renderCard(
+    fakeHass({
+      notices: [notice("progress_ongoing", { attributes: { entities: ["timer.agg"] } })],
+      values: [idle],
+    }),
+  );
+
+  const card = root.querySelector(".notice.ongoing");
+  assert.equal(text(card), "Diskmaskinen idle");
+  assert.equal(bar(card), null);
+});
+
+test("Kommande visar de närmaste tillfällena med dag och tid, även som Tyst-rad", (t) => {
+  // Måndag 26 oktober 09:00 i Stockholm.
+  t.mock.timers.enable({ apis: ["Date"], now: NOW });
+  const root = renderCard(fakeHass({ notices: [notice("upcoming_quiet")] }));
+
+  assert.equal(text(root.querySelector(".quiet")), "Sophämtning i morgon 06:30 Restavfall · tors Matavfall");
+});
+
+test("Kommande säger nu, om en stund, i dag eller datum beroende på hur nära det är", (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: NOW });
+  const at = (start, end = null) => ({ start, end, summary: null });
+  const occurrences = [
+    at("2026-10-26T08:30:00+01:00", "2026-10-26T09:30:00+01:00"),
+    at("2026-10-26T09:07:00+01:00"),
+    at("2026-10-26T14:00:00+01:00"),
+    at("2026-10-26", "2026-10-27"),
+    at("2026-11-03T06:30:00+01:00"),
+  ];
+  const root = renderCard(
+    fakeHass({ notices: [notice("upcoming_quiet", { state: "ongoing", attributes: { occurrences } })] }),
+  );
+
+  assert.equal(
+    text(root.querySelector(".notice.ongoing")),
+    "Sophämtning nu · om 7 min · i dag 14:00 · i dag · 3 nov. 06:30",
+  );
+});
+
+test("Kommande följer användarens språk", (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: NOW });
+  const root = renderCard(fakeHass({ notices: [notice("upcoming_quiet")], language: "en" }));
+
+  assert.equal(text(root.querySelector(".quiet")), "Sophämtning tomorrow 6:30 AM Restavfall · Thu Matavfall");
+});
+
+test("Kommande utan tillfällen visar ett streck", () => {
+  const root = renderCard(
+    fakeHass({ notices: [notice("upcoming_quiet", { attributes: { occurrences: [] } })] }),
+  );
+
+  assert.equal(text(root.querySelector(".quiet")), "Sophämtning –");
+});
+
+const WEATHER_CARD = { type: "weather-forecast", entity: "weather.hemma", show_forecast: false };
+
+test("Eget kort ritar kortkonfigurationen med HA:s kort och ger det hass, även som Blick-rad", async () => {
+  const hass = fakeHass({ notices: [notice("custom_glance")] });
+  const root = renderCard(hass);
+  await settled();
+
+  const embedded = root.querySelector(".glance hui-test-card");
+  assert.deepEqual(embedded.config, WEATHER_CARD);
+  assert.equal(embedded.hass, hass);
+});
+
+test("Eget kort på Larm visar namnet över kortet", async () => {
+  const root = renderCard(fakeHass({ notices: [notice("custom_glance", { state: "alarm" })] }));
+  await settled();
+
+  const card = root.querySelector(".notice.alarm");
+  assert.equal(text(card.querySelector("b")), "Vädret");
+  assert.deepEqual(card.querySelector("hui-test-card").config, WEATHER_CARD);
+});
+
+test("det inbäddade kortet återanvänds och får varje ny hass, även när inget annat ändras", async () => {
+  const hass = fakeHass({ notices: [notice("custom_glance")] });
+  const root = renderCard(hass);
+  await settled();
+  const embedded = root.querySelector("hui-test-card");
+  const created = cardHelpers.created;
+
+  const next = { ...hass, states: { ...hass.states, "weather.hemma": { state: "rainy", attributes: {} } } };
+  root.host.hass = next;
+
+  assert.equal(root.querySelector("hui-test-card"), embedded);
+  assert.equal(embedded.hass, next);
+  assert.equal(cardHelpers.created, created);
+});
+
+// Fönstren och gruppen de ingår i, med tillstånd som HA redan har formaterat.
+const WINDOWS = [
+  status("binary_sensor.kok", "Öppen", 5),
+  status("binary_sensor.sovrum", "Öppen", 12),
+  status("binary_sensor.badrum", "Öppen", 30),
+  status("binary_sensor.hall", "Stängd", 60),
+  status("binary_sensor.vardagsrum", "Stängd", 60),
+];
+const fonster = (state = "Öppen") =>
+  entity("binary_sensor.fonster", state, { entity_id: WINDOWS.map((w) => w.entity_id) }, 30);
+
+test("Status för en grupp visar hur många av medlemmarna som har gruppens tillstånd", () => {
+  const root = renderCard(
+    fakeHass({ notices: [notice("status_group_ongoing")], values: WINDOWS, groups: [fonster()] }),
+  );
+
+  assert.equal(text(root.querySelector(".notice.ongoing")), "Fönster Öppen · 3 av 5");
+});
+
+test("Status för en grupp på Tyst och på engelska", () => {
+  const root = renderCard(
+    fakeHass({
+      notices: [notice("status_group_ongoing", { state: "quiet" })],
+      values: WINDOWS,
+      groups: [fonster()],
+      language: "en",
+    }),
+  );
+
+  assert.equal(text(root.querySelector(".quiet")), "Fönster Öppen · 3 of 5");
+});
+
+test("en gammal grupp i domänen group räknas också", () => {
+  const group = { ...fonster("Stängd"), entity_id: "group.fonster" };
+  const root = renderCard(
+    fakeHass({
+      notices: [notice("status_group_ongoing", { attributes: { entities: ["group.fonster"] } })],
+      values: [...WINDOWS, group],
+    }),
+  );
+
+  assert.equal(text(root.querySelector(".notice")), "Fönster Stängd · 2 av 5");
+});
+
+test("en entitet med listan entity_id som inte är en grupp visar tillståndet och hur länge", () => {
+  const scene = entity("scene.kvall", "Aktiverad", { entity_id: ["light.kok"] }, 10);
+  const root = renderCard(
+    fakeHass({
+      notices: [notice("status_group_ongoing", { attributes: { entities: ["scene.kvall"] } })],
+      values: [scene],
+    }),
+  );
+
+  assert.equal(text(root.querySelector(".notice")), "Fönster Aktiverad i 10 min");
+});
+
+test("tryck eller Enter på Status för en grupp öppnar HA:s detaljdialog för gruppen", () => {
+  const root = renderCard(
+    fakeHass({
+      notices: [notice("status_group_ongoing", { state: "glance" })],
+      values: WINDOWS,
+      groups: [fonster()],
+    }),
+  );
+  const opened = [];
+  root.host.addEventListener("hass-more-info", (event) => opened.push(event.detail.entityId));
+
+  const row = root.querySelector(".glance");
+  row.click();
+  row.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+
+  assert.deepEqual(opened, ["binary_sensor.fonster", "binary_sensor.fonster"]);
+  assert.equal(row.getAttribute("role"), "button");
+});
+
+test("varje Typ kan visas på varje nivå", async () => {
+  const shown = [
+    ["value_glance", BILEN],
+    ["status_problem", DORREN],
+    ["progress_ongoing", entity("sensor.diskmaskin_klar", "62", { unit_of_measurement: "%" })],
+    ["upcoming_quiet"],
+    ["custom_glance"],
+  ];
+  for (const level of ["alarm", "problem", "ongoing", "glance", "quiet"]) {
+    for (const [name, value] of shown) {
+      const root = renderCard(
+        fakeHass({ notices: [notice(name, { state: level })], values: value ? [value] : [] }),
+      );
+      await settled();
+
+      const drawn = root.querySelector(`.${level}`);
+      assert.ok(drawn, `${name} på ${level}`);
+      const content = name === "custom_glance" ? drawn.querySelector("hui-test-card") : text(drawn);
+      assert.ok(content, `${name} på ${level}`);
+    }
+  }
+});
+
+test("Förlopp med en sensor för tid kvar visar tid kvar och en stapel från när notisen fick sin nivå", (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: NOW });
+  // Notisen fick sin nivå för 20 min sedan.
+  for (const [state, unit, left, done] of [
+    ["40", "min", "40 min", 33],
+    ["2400", "s", "40 min", 33],
+    ["0.5", "h", "30 min", 40],
+  ]) {
+    const kvar = entity("sensor.diskmaskin_klar", state, { device_class: "duration", unit_of_measurement: unit });
+    const root = renderCard(fakeHass({ notices: [DISKEN], values: [kvar] }));
+
+    const card = root.querySelector(".notice.ongoing");
+    assert.equal(text(card), `Diskmaskinen ${left} kvar`, unit);
+    assert.equal(Math.round(bar(card)), done, unit);
+  }
+});
+
+test("en entitet med gruppmedlemmar i group_entities räknas som en grupp", () => {
+  const lampor = entity(
+    "light.kok",
+    "on",
+    { group_entities: ["light.kok_1", "light.kok_2", "light.kok_3"] },
+    10,
+  );
+  const root = renderCard(
+    fakeHass({
+      notices: [notice("status_group_ongoing", { attributes: { entities: ["light.kok"] } })],
+      values: [lampor, entity("light.kok_1", "on"), entity("light.kok_2", "off"), entity("light.kok_3", "on")],
+    }),
+  );
+
+  assert.equal(text(root.querySelector(".notice")), "Fönster on · 2 av 3");
 });
