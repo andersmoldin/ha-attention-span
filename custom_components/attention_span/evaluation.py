@@ -6,6 +6,7 @@ villkorstyper fungerar som i automationer.
 
 from __future__ import annotations
 
+import contextvars
 import copy
 import json
 import logging
@@ -39,6 +40,7 @@ from homeassistant.helpers.condition import (
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.target import TargetSelection, async_extract_referenced_entity_ids
 from homeassistant.helpers.template import render_complex
+from homeassistant.helpers.trace import trace_clear
 from homeassistant.util import dt as dt_util
 
 from .const import ALWAYS, HIDDEN, LEVELS
@@ -347,6 +349,14 @@ class RuleLevel:
 
     def evaluate(self) -> str:
         """Nivån som gäller just nu, eller dold."""
+        # HA sparar varje villkorskontroll i en trace. Utanför en automation töms den aldrig,
+        # och under en automation hamnar kontrollen i automationens trace. Kontrollerna görs
+        # därför i en egen kopia av kontexten med en tom trace, som försvinner efteråt.
+        return contextvars.copy_context().run(self._evaluate)
+
+    def _evaluate(self) -> str:
+        # Bara i kopian: kontexten som anropade evaluate behåller sin trace.
+        trace_clear()
         # Alla villkor med tid följs, också de som inte behöver kontrolleras den här gången.
         for timed in self._lasting:
             timed.async_update()
