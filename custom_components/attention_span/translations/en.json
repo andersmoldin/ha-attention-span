@@ -34,6 +34,7 @@
             "entity": "Entity"
           },
           "data_description": {
+            "icon": "Optional. Without an icon, the entity's own icon for its state is shown, for example an open or closed door.",
             "entity": "The entity whose state the notice shows."
           }
         },
@@ -98,6 +99,7 @@
             "card": "Card"
           },
           "data_description": {
+            "icon": "Optional. On a Status, the entity's own icon for its state is shown without one.",
             "entity": "The entity the notice shows.",
             "entities": "Calendars and sensors whose state is a timestamp.",
             "count": "How many of the next occurrences the notice shows.",

@@ -144,6 +144,15 @@ test("en notis som ligger åt sidan ritas inte, och kortet är lugnt när inget 
   assert.equal(text(root.querySelector(".calm")), "Allt är lugnt hemma.");
 });
 
+test("en Status utan egen ikon som ligger åt sidan visar entitetens ikon i listan", (t) => {
+  const dorren = held("status_problem_snoozed", 10, { attributes: { ...SNOOZED.attributes, icon: null } });
+  const root = renderAt(t, fakeHass({ notices: [dorren], values: [DORREN] }));
+
+  press(root.querySelector(".stack > .chips"), "⚠ 1 åt sidan");
+
+  assert.equal(root.querySelector(".snoozed .entry ha-state-icon").shown, "mdi:door-open");
+});
+
 test("chipet «⚠ N åt sidan» står först och öppnar listan «Lagt åt sidan»", (t) => {
   const tvatten = held("status_ongoing", 25, {
     attributes: { snoozed: true, snoozed_until: null, since: "2026-10-25T18:10:00+00:00" },

@@ -145,6 +145,24 @@ customElements.define(
   },
 );
 
+// Som HA:s ha-state-icon: ikonen för entitetens tillstånd, som uppdateras när stateObj byts ut.
+// shown är ikonen som ritas, här en dörr som är öppen eller stängd efter tillståndet.
+customElements.define(
+  "ha-state-icon",
+  class extends HTMLElement {
+    #stateObj = null;
+
+    set stateObj(stateObj) {
+      this.#stateObj = stateObj;
+      this.shown = stateObj ? (stateObj.state === "Öppen" ? "mdi:door-open" : "mdi:door-closed") : null;
+    }
+
+    get stateObj() {
+      return this.#stateObj;
+    }
+  },
+);
+
 // Väntar tills kortet har laddat det som laddas i bakgrunden, till exempel loadCardHelpers.
 export function settled() {
   return new Promise((resolve) => setImmediate(resolve));

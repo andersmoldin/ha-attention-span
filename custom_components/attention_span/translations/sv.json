@@ -34,6 +34,7 @@
             "entity": "Entitet"
           },
           "data_description": {
+            "icon": "Valfri. Utan ikon visas entitetens ikon för tillståndet, till exempel en öppen eller stängd dörr.",
             "entity": "Entiteten vars tillstånd notisen visar."
           }
         },
@@ -98,6 +99,7 @@
             "card": "Kort"
           },
           "data_description": {
+            "icon": "Valfri. På en Status visas entitetens ikon för tillståndet utan en egen ikon.",
             "entity": "Entiteten som notisen visar.",
             "entities": "Kalendrar och sensorer vars tillstånd är en tidpunkt.",
             "count": "Hur många av de närmaste tillfällena som notisen visar.",

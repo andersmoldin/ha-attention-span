@@ -241,6 +241,79 @@ test("Larm, Problem och Pågår ritas som egna kort i den ordningen, över Blick
   assert.equal(parts[0].querySelector("ha-icon").getAttribute("icon"), "mdi:robot-vacuum");
 });
 
+// Status utan egen ikon visar entitetens ikon för tillståndet, som HA:s egna kort.
+const NO_ICON = { attributes: { icon: null } };
+
+test("Status utan egen ikon visar entitetens ikon, som byter med tillståndet utan att ritas om", () => {
+  const card = document.createElement("attention-span-card");
+  document.body.replaceChildren(card);
+  card.setConfig({ type: "custom:attention-span-card" });
+  const notices = [held("status_problem", 10, NO_ICON)];
+  card.hass = fakeHass({ notices, values: [status("binary_sensor.ytterdorr", "Öppen", 10)] });
+  const [icon] = card.shadowRoot.querySelectorAll(".notice .head > *:first-child");
+
+  assert.equal(icon.localName, "ha-state-icon");
+  assert.equal(icon.shown, "mdi:door-open");
+  assert.equal(card.shadowRoot.querySelectorAll(".notice ha-icon").length, 0);
+
+  card.hass = fakeHass({ notices, values: [status("binary_sensor.ytterdorr", "Stängd", 0)] });
+
+  assert.equal(card.shadowRoot.querySelector(".notice .head > *:first-child"), icon);
+  assert.equal(icon.shown, "mdi:door-closed");
+});
+
+test("Status med egen ikon visar den, också när tillståndet byter", () => {
+  const card = document.createElement("attention-span-card");
+  document.body.replaceChildren(card);
+  card.setConfig({ type: "custom:attention-span-card" });
+  const notices = [held("status_problem", 10, { attributes: { icon: "mdi:garage" } })];
+  card.hass = fakeHass({ notices, values: [status("binary_sensor.ytterdorr", "Öppen", 10)] });
+  const head = () => card.shadowRoot.querySelector(".notice .head");
+
+  assert.equal(head().querySelector("ha-icon").getAttribute("icon"), "mdi:garage");
+  assert.equal(head().querySelectorAll("ha-state-icon").length, 0);
+
+  card.hass = fakeHass({ notices, values: [status("binary_sensor.ytterdorr", "Stängd", 0)] });
+
+  assert.equal(head().querySelector("ha-icon").getAttribute("icon"), "mdi:garage");
+  assert.equal(head().querySelectorAll("ha-state-icon").length, 0);
+});
+
+test("Status som får en egen ikon byter tillbaka till den, och tvärtom", () => {
+  const card = document.createElement("attention-span-card");
+  document.body.replaceChildren(card);
+  card.setConfig({ type: "custom:attention-span-card" });
+  const values = [status("binary_sensor.ytterdorr", "Öppen", 10)];
+  const draw = (attributes) => {
+    card.hass = fakeHass({ notices: [held("status_problem", 10, { attributes })], values });
+    return [...card.shadowRoot.querySelectorAll(".notice .head > *:first-child")];
+  };
+
+  assert.deepEqual(draw({ icon: null }).map((el) => el.localName), ["ha-state-icon"]);
+  assert.deepEqual(draw({ icon: "mdi:garage" }).map((el) => el.localName), ["ha-icon"]);
+  assert.deepEqual(draw({ icon: null }).map((el) => el.localName), ["ha-state-icon"]);
+});
+
+test("en grupp i Status utan egen ikon visar gruppentitetens ikon", () => {
+  const root = renderCard(
+    fakeHass({
+      notices: [notice("status_group_ongoing", NO_ICON)],
+      values: WINDOWS,
+      groups: [fonster()],
+    }),
+  );
+
+  const icon = root.querySelector(".notice .head > ha-state-icon");
+  assert.equal(icon.stateObj.entity_id, "binary_sensor.fonster");
+  assert.equal(icon.shown, "mdi:door-open");
+});
+
+test("Värde och de andra Typerna visar fortfarande ikonen som regeln har", () => {
+  const root = renderCard(fakeHass({ notices: [notice("value_glance", NO_ICON)], values: [BILEN] }));
+
+  assert.equal(root.querySelectorAll("ha-state-icon").length, 0);
+});
+
 test("varje notis på Pågår får ett eget kort", () => {
   const dorren = held("status_problem", 10, { state: "ongoing" });
   const root = renderCard(
