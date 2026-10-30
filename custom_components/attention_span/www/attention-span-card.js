@@ -98,7 +98,7 @@ const STYLE = `
   .snoozed .entry { display: flex; flex-wrap: wrap; align-items: center; gap: 12px;
     padding: 6px 0; }
   .snoozed .entry > button { flex: none; }
-  .snoozed .entry ha-icon { --mdc-icon-size: 24px; color: var(--warning-color); }
+  .snoozed .entry ha-icon, .snoozed .entry ha-state-icon { --mdc-icon-size: 24px; color: var(--warning-color); }
   .snoozed .entry span { display: flex; flex-direction: column; min-width: 0; }
   .snoozed .entry b { font-size: 14px; font-weight: 500; }
   .snoozed .entry small { font-size: 13px; color: var(--secondary-text-color); }
