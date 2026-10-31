@@ -20,34 +20,35 @@ const STYLE = `
     align-items: center; gap: 12px; padding: 14px 16px; }
   .notice::before { content: ""; position: absolute; top: 0; right: 0; bottom: 0; left: 0;
     opacity: 0.1; pointer-events: none; }
-  .notice ha-icon { position: relative; flex: none; display: flex; align-items: center;
-    justify-content: center; width: 42px; height: 42px; --mdc-icon-size: 24px; }
+  .notice ha-icon, .notice ha-state-icon { position: relative; flex: none; display: flex;
+    align-items: center; justify-content: center; width: 42px; height: 42px;
+    --mdc-icon-size: 24px; }
   .notice span { position: relative; display: flex; flex-direction: column; min-width: 0; }
   .notice b { font-size: 16px; font-weight: 500; }
   .notice small { font-size: 13px; color: var(--secondary-text-color); }
   .alarm { padding: 18px 16px; border-width: 2px; border-style: solid;
     border-color: var(--error-color); }
   .alarm::before { background: var(--error-color); opacity: 0.12; }
-  .alarm ha-icon { width: 54px; height: 54px; border-radius: 18px; --mdc-icon-size: 32px;
-    color: var(--text-primary-color); background: var(--error-color); }
+  .alarm ha-icon, .alarm ha-state-icon { width: 54px; height: 54px; border-radius: 18px;
+    --mdc-icon-size: 32px; color: var(--text-primary-color); background: var(--error-color); }
   .alarm b { font-size: 20px; color: var(--error-color); }
   .alarm small { color: var(--primary-text-color); }
   /* Ett kvitterat Larm ligger kvar i kompakt form. */
   .alarm.acknowledged { padding: 12px 16px; border-width: 1px; }
-  .alarm.acknowledged ha-icon { width: 42px; height: 42px; border-radius: 14px;
-    --mdc-icon-size: 24px; }
+  .alarm.acknowledged ha-icon, .alarm.acknowledged ha-state-icon { width: 42px; height: 42px;
+    border-radius: 14px; --mdc-icon-size: 24px; }
   .alarm.acknowledged b { font-size: 16px; }
   .problem { border-width: 1px; border-style: solid; border-color: var(--warning-color); }
   .problem::before { background: var(--warning-color); }
-  .problem ha-icon { color: var(--warning-color); }
-  .ongoing ha-icon { color: var(--info-color); }
+  .problem ha-icon, .problem ha-state-icon { color: var(--warning-color); }
+  .ongoing ha-icon, .ongoing ha-state-icon { color: var(--info-color); }
   .glance, .quiet { display: flex; align-items: center; min-width: 0; }
   .glance { gap: 12px; min-height: 44px; font-size: 16px; }
-  .glance ha-icon { --mdc-icon-size: 24px; color: var(--state-icon-color); }
+  .glance ha-icon, .glance ha-state-icon { --mdc-icon-size: 24px; color: var(--state-icon-color); }
   .glance b { font-weight: 500; white-space: nowrap; }
   .glance small { font-size: 13px; color: var(--secondary-text-color); }
   .quiet { gap: 10px; padding: 5px 0; font-size: 13px; color: var(--secondary-text-color); }
-  .quiet ha-icon { --mdc-icon-size: 18px; }
+  .quiet ha-icon, .quiet ha-state-icon { --mdc-icon-size: 18px; }
   .quiet b { font-weight: 500; color: var(--primary-text-color); white-space: nowrap; }
   .quiet small { font-size: inherit; }
   small { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -97,7 +98,7 @@ const STYLE = `
   .snoozed .entry { display: flex; flex-wrap: wrap; align-items: center; gap: 12px;
     padding: 6px 0; }
   .snoozed .entry > button { flex: none; }
-  .snoozed .entry ha-icon { --mdc-icon-size: 24px; color: var(--warning-color); }
+  .snoozed .entry ha-icon, .snoozed .entry ha-state-icon { --mdc-icon-size: 24px; color: var(--warning-color); }
   .snoozed .entry span { display: flex; flex-direction: column; min-width: 0; }
   .snoozed .entry b { font-size: 14px; font-weight: 500; }
   .snoozed .entry small { font-size: 13px; color: var(--secondary-text-color); }
@@ -122,6 +123,27 @@ function setIcon(icon, name) {
   if (icon.getAttribute("icon") === name) return;
   if (name) icon.setAttribute("icon", name);
   else icon.removeAttribute("icon");
+}
+
+// Ikonen först i head. Med en egen ikon är det ett ha-icon; utan, på en Status, är det HA:s
+// ha-state-icon med entitetens stateObj, som själv byter ikon när tillståndet byter. Elementen
+// byts bara när regeln får eller tappar en egen ikon.
+function iconPart(head, hass) {
+  const own = document.createElement("ha-icon");
+  const state = document.createElement("ha-state-icon");
+  head.append(own);
+  return (row) => {
+    const wanted = row.stateObj && !row.icon ? state : own;
+    const shown = wanted === state ? own : state;
+    if (wanted.parentNode !== head) shown.replaceWith(wanted);
+    if (wanted === own) {
+      setIcon(own, row.icon);
+    } else {
+      // HA:s kort ger ha-state-icon varje ny hass, som den slår upp ikonens översättningar i.
+      state.hass = hass();
+      if (state.stateObj !== row.stateObj) state.stateObj = row.stateObj;
+    }
+  };
 }
 
 // Lägger children i parent i den ordningen och flyttar bara det som inte redan står rätt.
@@ -287,11 +309,10 @@ function textParts(parent) {
 }
 
 // Tryckytan som öppnar detaljdialogen, med ikonen först.
-function headElement() {
+function headElement(host) {
   const head = document.createElement("div");
   head.className = "head";
-  const icon = document.createElement("ha-icon");
-  head.append(icon);
+  const icon = iconPart(head, host.hass);
   return { head, icon, moreInfo: moreInfoPart(head) };
 }
 
@@ -300,7 +321,7 @@ function headElement() {
 function noticeElement(level, host) {
   const el = document.createElement("ha-card");
   el.className = `notice ${level}`;
-  const { head, icon, moreInfo } = headElement();
+  const { head, icon, moreInfo } = headElement(host);
   const body = document.createElement("span");
   head.append(body);
   const actions = actionsPart(host);
@@ -310,7 +331,7 @@ function noticeElement(level, host) {
     el,
     update: (row, text) => {
       el.classList.toggle("acknowledged", row.acknowledged);
-      setIcon(icon, row.icon);
+      icon(row);
       texts(row.name, row.text, row.fraction);
       moreInfo(row.moreInfo);
       actions.update(row, text);
@@ -323,14 +344,14 @@ function noticeElement(level, host) {
 function rowElement(level, host) {
   const el = document.createElement("div");
   el.className = level;
-  const { head, icon, moreInfo } = headElement();
+  const { head, icon, moreInfo } = headElement(host);
   const actions = actionsPart(host);
   el.append(head, actions.el);
   const texts = textParts(head);
   return {
     el,
     update: (row, text) => {
-      setIcon(icon, row.icon);
+      icon(row);
       const [first, second] = row.valueFirst ? [row.text, row.name] : [row.name, row.text];
       texts(first, second, row.fraction);
       moreInfo(row.moreInfo);
@@ -357,7 +378,7 @@ function embeddedPart(parent, next) {
 function customNoticeElement(level, host) {
   const el = document.createElement("ha-card");
   el.className = `notice ${level} custom`;
-  const { head, icon, moreInfo } = headElement();
+  const { head, icon, moreInfo } = headElement(host);
   const name = document.createElement("b");
   const reason = document.createElement("small");
   head.append(name, reason);
@@ -368,7 +389,7 @@ function customNoticeElement(level, host) {
     el,
     update: (row, text) => {
       el.classList.toggle("acknowledged", row.acknowledged);
-      setIcon(icon, row.icon);
+      icon(row);
       setText(name, row.name);
       setText(reason, row.text);
       embedded(host.embedded(row));
@@ -425,7 +446,7 @@ function chipElement(toggle) {
 function snoozedEntryElement(host) {
   const el = document.createElement("div");
   el.className = "entry";
-  const { head, icon, moreInfo } = headElement();
+  const { head, icon, moreInfo } = headElement(host);
   const body = document.createElement("span");
   head.append(body);
   const texts = textParts(body);
@@ -436,7 +457,7 @@ function snoozedEntryElement(host) {
     el,
     update: (row, text) => {
       entity = row.id;
-      setIcon(icon, row.icon);
+      icon(row);
       texts(row.name, row.text, null);
       moreInfo(row.moreInfo);
       setText(unsnooze, text.unsnooze);
@@ -470,7 +491,7 @@ const MORE = {
 
 // Hur en notis byggs: som eget kort (notice) eller som rad (row), med ett inbäddat kort för
 // Eget kort och annars med text. Varje sätt får nivån och host: AttentionSpan-kortets
-// embedded, acknowledge, choices (valen för åt sidan), snooze och unsnooze.
+// hass, embedded, acknowledge, choices (valen för åt sidan), snooze och unsnooze.
 const ELEMENTS = {
   notice: { custom: customNoticeElement, text: noticeElement },
   row: { custom: customRowElement, text: rowElement },
@@ -552,6 +573,7 @@ class AttentionSpanCard extends HTMLElement {
     const levels = [...NEEDS_ATTENTION, "glance", "quiet"];
     this._keepCards([...levels.flatMap((level) => model[level]), ...model.snoozed]);
     const host = {
+      hass: () => this._hass,
       embedded: (r) => this._embedded(r),
       acknowledge: (entityId) => this._acknowledge(entityId),
       choices: () => this._choices,

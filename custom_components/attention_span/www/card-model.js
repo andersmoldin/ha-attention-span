@@ -463,11 +463,19 @@ function snoozedRow(hass, stateObj, now) {
     type: a.type,
     name: a.friendly_name ?? stateObj.entity_id,
     icon: a.icon ?? null,
+    stateObj: stateIconOf(hass, a),
     text: a.snoozed_until
       ? text.snoozedUntil(dayAndTime(hass, a.snoozed_until, now), since)
       : text.snoozedUntilFixed(since),
     moreInfo: a.entities?.[0] ?? stateObj.entity_id,
   };
+}
+
+// Entiteten vars ikon för tillståndet en Status visar när regeln inte har någon egen ikon, som
+// HA:s tile- och entities-kort. För en grupp är det gruppentiteten. Annars null.
+function stateIconOf(hass, attributes) {
+  if (attributes.type !== "status" || attributes.icon) return null;
+  return hass.states[attributes.entities?.[0]] ?? null;
 }
 
 // En notis som kortet ritar. text är orsaken när regeln har en, annars det Typen visar; ett
@@ -485,6 +493,7 @@ function row(hass, stateObj, now) {
     id: stateObj.entity_id,
     name: a.friendly_name ?? stateObj.entity_id,
     icon: a.icon ?? null,
+    stateObj: stateIconOf(hass, a),
     type: a.type,
     text: acknowledged ? acknowledgedText(hass, a.realarm_at, now) : (reason ?? text),
     acknowledged,
