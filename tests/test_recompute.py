@@ -180,6 +180,17 @@ async def test_a_template_follows_the_entity_it_reads_without_waiting(hass: Home
     assert level(hass) == "problem"
 
 
+async def test_a_template_follows_the_entity_it_reads_within_a_second(
+    hass: HomeAssistant, freezer
+):
+    hass.states.async_set("binary_sensor.door", "off")
+    entry = await add_integration(hass)
+    await add(hass, entry, {"problem": [DOOR]})
+    hass.states.async_set("binary_sensor.door", "on")
+    await tick(hass, freezer, timedelta(seconds=1))
+    assert level(hass) == "problem"
+
+
 async def test_a_template_is_not_checked_every_second(hass: HomeAssistant, freezer):
     hass.states.async_set("binary_sensor.door", "off")
     entry = await add_integration(hass)

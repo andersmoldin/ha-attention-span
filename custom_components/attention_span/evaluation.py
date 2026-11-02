@@ -94,6 +94,33 @@ _COMPOUNDS: dict[str, type[CompoundConditionChecker]] = {
 }
 
 
+class _Wake:
+    """En timer som väcker regeln vid en tidpunkt. Att ställa den tar bort den förra."""
+
+    def __init__(self, hass: HomeAssistant, action: Callable[[], None]) -> None:
+        self._hass = hass
+        self._action = action
+        self._unsub: CALLBACK_TYPE | None = None
+
+    @callback
+    def async_set(self, at: datetime | None) -> None:
+        """Väck vid at, eller inte alls med None."""
+        self.async_cancel()
+        if at is not None:
+            self._unsub = async_track_point_in_utc_time(self._hass, self._woken, at)
+
+    @callback
+    def async_cancel(self) -> None:
+        if self._unsub is not None:
+            self._unsub()
+            self._unsub = None
+
+    @callback
+    def _woken(self, _: datetime) -> None:
+        self._unsub = None
+        self._action()
+
+
 def _duration(config: Any) -> tuple[dict[str, Any], dict[str, Any]] | None:
     """Var villkorets tid («i 2 h») står, och villkoret utan den; None utan tid.
 
@@ -128,7 +155,7 @@ def _compound(config: Any) -> tuple[str, list[Any]] | None:
     return None
 
 
-def _followed(config: Any) -> type[_FollowedCondition] | None:
+def _follower(config: Any) -> type[_FollowedCondition] | None:
     """Klassen som följer ett villkor utan tid som HA bara kan kontrollera varje sekund.
 
     None för villkor som HA bevakar själv, och för dem som kontrolleras varje sekund som
@@ -152,7 +179,7 @@ def _built_here(config: Any) -> bool:
     och villkor som AttentionSpan följer själv."""
     if (compound := _compound(config)) is not None:
         return any(_built_here(part) for part in compound[1])
-    return _duration(config) is not None or _followed(config) is not None
+    return _duration(config) is not None or _follower(config) is not None
 
 
 async def _async_build(
@@ -167,8 +194,8 @@ async def _async_build(
     if not _built_here(config):
         return await _async_checker(hass, config), []
     if (compound := _compound(config)) is None:
-        if (followed := _followed(config)) is not None:
-            return await followed.async_create(hass, config), []
+        if (follower := _follower(config)) is not None:
+            return await follower.async_create(hass, config), []
         timed = await _LastingCondition.async_create(hass, config, started)
         return timed, [timed]
     kind, parts = compound
@@ -218,12 +245,11 @@ class _LastingCondition(ConditionChecker):
         self._target = target
         # Nyckel -> när villkoret utan tid började gälla. Saknas nyckeln gäller det inte.
         self._started = started
-        # Det som väcker regeln när tiden går ut, medan regeln följer villkoret.
-        self._wake: Callable[[], None] | None = None
-        self._unsub_wake: CALLBACK_TYPE | None = None
+        # Väcker regeln när tiden går ut, medan regeln följer villkoret.
+        self._wake: _Wake | None = None
         # Om villkoret har kontrollerats sedan regeln byggdes, och om starten då sattes utan
         # att övergången sågs. HA kan då veta att villkoret började tidigare (se async_update).
-        self._looked = False
+        self._checked = False
         self._unconfirmed = False
 
     @classmethod
@@ -263,21 +289,16 @@ class _LastingCondition(ConditionChecker):
     @override
     async def _async_track_changes(self, action: Callable[[], None]) -> CALLBACK_TYPE:
         unsub = await self._untimed.async_track_changes(action)
-        self._wake = action
+        wake = self._wake = _Wake(self._hass, action)
         self.async_schedule()
 
         @callback
         def unsubscribe() -> None:
             unsub()
+            wake.async_cancel()
             self._wake = None
-            self._cancel_wake()
 
         return unsubscribe
-
-    def _cancel_wake(self) -> None:
-        if self._unsub_wake is not None:
-            self._unsub_wake()
-            self._unsub_wake = None
 
     @callback
     def async_schedule(self) -> None:
@@ -287,28 +308,23 @@ class _LastingCondition(ConditionChecker):
         tiden, alltså 1 µs efter gränsen. Medan starten är obekräftad väcks regeln också varje
         sekund, högst tills tiden har gått, så att den ser när HA:s eget villkor gäller.
         """
-        self._cancel_wake()
+        if self._wake is not None:
+            self._wake.async_set(self._next_wake())
+
+    def _next_wake(self) -> datetime | None:
         since = self._started.get(self._key)
-        if self._wake is None or since is None or not isinstance(self._duration, timedelta):
-            return
+        if since is None or not isinstance(self._duration, timedelta):
+            return None
         now = dt_util.utcnow()
         at = since + self._duration + timedelta(microseconds=1)
         if at <= now:
-            return
-        if self._unconfirmed:
-            at = min(at, now + POLL_INTERVAL)
-        wake = self._wake
-
-        @callback
-        def woken(_: datetime) -> None:
-            self._unsub_wake = None
-            wake()
-
-        self._unsub_wake = async_track_point_in_utc_time(self._hass, woken, at)
+            return None
+        return min(at, now + POLL_INTERVAL) if self._unconfirmed else at
 
     @override
     def _async_unload(self) -> None:
-        self._cancel_wake()
+        if self._wake is not None:
+            self._wake.async_cancel()
         self._timed.async_unload()
         self._untimed.async_unload()
 
@@ -351,8 +367,8 @@ class _LastingCondition(ConditionChecker):
         """Håll reda på när villkoret började gälla. Anropas före varje kontroll."""
         if self._waiting():
             return
-        first = not self._looked
-        self._looked = True
+        first = not self._checked
+        self._checked = True
         # Ett villkor som inte går att räkna ut gäller inte, som i HA.
         try:
             holds = self._untimed.async_check() is True
@@ -393,7 +409,7 @@ class _FollowedCondition(ConditionChecker):
     def __init__(self, hass: HomeAssistant, checker: ConditionChecker, config: Any) -> None:
         super().__init__(hass)
         self._checker = checker
-        # Villkoret som HA har kontrollerat det.
+        # Villkoret som HA har validerat det.
         self._config = config
 
     @classmethod
@@ -494,37 +510,24 @@ class _TimeCondition(_FollowedCondition):
 
     @override
     async def _async_track_changes(self, action: Callable[[], None]) -> CALLBACK_TYPE:
-        unsub_wake: CALLBACK_TYPE | None = None
-
         @callback
-        def schedule() -> None:
-            nonlocal unsub_wake
-            if unsub_wake is not None:
-                unsub_wake()
-            at = self._next_change(dt_util.utcnow())
-            unsub_wake = async_track_point_in_utc_time(self._hass, woken, at)
-
-        @callback
-        def woken(_: datetime) -> None:
-            nonlocal unsub_wake
-            unsub_wake = None
-            schedule()
+        def changed() -> None:
+            wake.async_set(self._next_change(dt_util.utcnow()))
             action()
 
         @callback
         def config_changed(_: Event) -> None:
             # Tidszonen kan ha bytts.
-            schedule()
-            action()
+            changed()
 
-        schedule()
+        wake = _Wake(self._hass, changed)
+        wake.async_set(self._next_change(dt_util.utcnow()))
         unsub_config = self._hass.bus.async_listen(EVENT_CORE_CONFIG_UPDATE, config_changed)
 
         @callback
         def unsubscribe() -> None:
             unsub_config()
-            if unsub_wake is not None:
-                unsub_wake()
+            wake.async_cancel()
 
         return unsubscribe
 
