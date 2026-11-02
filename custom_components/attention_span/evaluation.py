@@ -10,7 +10,7 @@ import contextvars
 import copy
 import json
 import logging
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Collection, Mapping
 from datetime import datetime, timedelta
 from datetime import time as dt_time
 from typing import Any, Unpack, override
@@ -183,26 +183,27 @@ def _built_here(config: Any) -> bool:
 
 
 async def _async_build(
-    hass: HomeAssistant, config: Any, started: dict[str, datetime]
+    hass: HomeAssistant, config: Any, started: dict[str, datetime], unseen: set[str]
 ) -> tuple[ConditionChecker, list[_LastingCondition]]:
     """Bygg villkoret så att villkor med tid räknar från när de började gälla, och så att
     templates och klockslag räknas om när de kan ha ändrats i stället för varje sekund.
 
-    started är när villkoren med tid började gälla och delas av dem. Ger också villkoren
-    med tid, så att regeln kan hålla reda på när de började.
+    started är när villkoren med tid började gälla och unseen de villkor vars start sattes
+    utan att övergången sågs; båda delas av villkoren med tid. Ger också villkoren med tid,
+    så att regeln kan hålla reda på när de började.
     """
     if not _built_here(config):
         return await _async_checker(hass, config), []
     if (compound := _compound(config)) is None:
         if (follower := _follower(config)) is not None:
             return await follower.async_create(hass, config), []
-        timed = await _LastingCondition.async_create(hass, config, started)
+        timed = await _LastingCondition.async_create(hass, config, started, unseen)
         return timed, [timed]
     kind, parts = compound
     checkers: list[ConditionChecker] = []
     lasting: list[_LastingCondition] = []
     for part in parts:
-        checker, part_lasting = await _async_build(hass, part, started)
+        checker, part_lasting = await _async_build(hass, part, started, unseen)
         checkers.append(checker)
         lasting.extend(part_lasting)
     compound_checker = _COMPOUNDS[kind](hass, checkers)
@@ -231,6 +232,7 @@ class _LastingCondition(ConditionChecker):
         entities: set[str],
         target: TargetSelection,
         started: dict[str, datetime],
+        unseen: set[str],
     ) -> None:
         super().__init__(hass)
         # Villkoret utan tid. Villkor som bara skiljer sig i tid har samma nyckel och delar
@@ -245,16 +247,20 @@ class _LastingCondition(ConditionChecker):
         self._target = target
         # Nyckel -> när villkoret utan tid började gälla. Saknas nyckeln gäller det inte.
         self._started = started
+        # Nycklarna vars start sattes utan att övergången sågs, till exempel när regeln lades
+        # till medan villkoret redan gällde. HA kan då veta att villkoret började tidigare
+        # (se async_update). Delas som started, eftersom starten gäller alla med nyckeln.
+        self._unseen = unseen
         # Väcker regeln när tiden går ut, medan regeln följer villkoret.
         self._wake: _Wake | None = None
-        # Om villkoret har kontrollerats sedan regeln byggdes, och om starten då sattes utan
-        # att övergången sågs. HA kan då veta att villkoret började tidigare (se async_update).
-        self._checked = False
-        self._unconfirmed = False
 
     @classmethod
     async def async_create(
-        cls, hass: HomeAssistant, config: dict[str, Any], started: dict[str, datetime]
+        cls,
+        hass: HomeAssistant,
+        config: dict[str, Any],
+        started: dict[str, datetime],
+        unseen: set[str],
     ) -> _LastingCondition:
         duration = _duration(config)
         assert duration is not None
@@ -272,6 +278,7 @@ class _LastingCondition(ConditionChecker):
             condition.async_extract_entities(validated),
             TargetSelection(validated.get(CONF_TARGET, {})),
             started,
+            unseen,
         )
         await checker.async_setup()
         return checker
@@ -306,7 +313,8 @@ class _LastingCondition(ConditionChecker):
 
         Anropas efter varje kontroll. Villkoret gäller när det började gälla före nu minus
         tiden, alltså 1 µs efter gränsen. Medan starten är obekräftad väcks regeln också varje
-        sekund, högst tills tiden har gått, så att den ser när HA:s eget villkor gäller.
+        sekund, tills tiden har gått, så att den ser när HA:s eget villkor gäller. Då har tiden
+        också gått, eftersom starten flyttas dit.
         """
         if self._wake is not None:
             self._wake.async_set(self._next_wake())
@@ -319,7 +327,7 @@ class _LastingCondition(ConditionChecker):
         at = since + self._duration + timedelta(microseconds=1)
         if at <= now:
             return None
-        return min(at, now + POLL_INTERVAL) if self._unconfirmed else at
+        return min(at, now + POLL_INTERVAL) if self._key in self._unseen else at
 
     @override
     def _async_unload(self) -> None:
@@ -367,30 +375,25 @@ class _LastingCondition(ConditionChecker):
         """Håll reda på när villkoret började gälla. Anropas före varje kontroll."""
         if self._waiting():
             return
-        first = not self._checked
-        self._checked = True
         # Ett villkor som inte går att räkna ut gäller inte, som i HA.
         try:
             holds = self._untimed.async_check() is True
         except ConditionError:
             holds = False
+        # När villkoret slutar gälla ses nästa övergång.
         if not holds:
             self._started.pop(self._key, None)
-            self._unconfirmed = False
+            self._unseen.discard(self._key)
             return
-        # Gäller villkoret redan första gången det kontrolleras, och har det ingen sparad
-        # start, sätts starten till nu utan att övergången har setts.
-        if first and self._key not in self._started:
-            self._unconfirmed = True
         since = self._started.setdefault(self._key, dt_util.utcnow())
         # HA kan veta att villkoret har gällt längre än så, till exempel när regeln läggs
         # till och källentiteten redan har haft sitt tillstånd länge. HA säger det bara som ja
-        # eller nej, så en obekräftad start kontrolleras varje sekund tills HA bekräftar
-        # eller tiden har gått (se async_schedule).
+        # eller nej för just den här tiden, så en obekräftad start kontrolleras varje sekund
+        # tills HA bekräftar eller tiden har gått (se async_schedule). Den förblir obekräftad,
+        # eftersom ett villkor med längre tid och samma nyckel kan ha börjat ännu tidigare.
         try:
             if self._timed.async_check() is True:
                 self._started[self._key] = min(since, self._cutoff())
-                self._unconfirmed = False
         except ConditionError:
             pass
 
@@ -546,6 +549,7 @@ class RuleLevel:
         hide: ConditionChecker | None,
         lasting: list[_LastingCondition],
         started: dict[str, datetime],
+        unseen: set[str],
     ) -> None:
         self._name = name
         # Nivå -> villkoret, eller None för «Alltid». Nivåer utan villkor saknas.
@@ -555,6 +559,7 @@ class RuleLevel:
         # de började gälla.
         self._lasting = lasting
         self._started = started
+        self._unseen = unseen
         self._failing = False
 
     @classmethod
@@ -565,19 +570,24 @@ class RuleLevel:
         levels: Mapping[str, Any],
         hide: list[Any] | None,
         started: Mapping[str, datetime],
+        unconfirmed: Collection[str],
     ) -> RuleLevel:
         """Bygg villkoren ur regelns konfiguration.
 
         started är när villkoren med tid började gälla, som started gav förra gången. De
         som fortfarande gäller vid första omräkningen räknar därifrån; övriga har släppt.
+        unconfirmed är de av dem vars start är obekräftad, som unconfirmed gav förra gången;
+        övriga räknas som sedda. Ett villkor utan sparad start som gäller vid första
+        omräkningen får en obekräftad start.
         Ger vol.Invalid eller HomeAssistantError om ett villkor inte går att bygga.
         """
         since = dict(started)
+        unseen: set[str] = set()
         lasting: list[_LastingCondition] = []
 
         async def build(conditions: list[Any]) -> ConditionChecker:
             checker, built = await _async_build(
-                hass, {CONF_CONDITION: "and", CONF_CONDITIONS: conditions}, since
+                hass, {CONF_CONDITION: "and", CONF_CONDITIONS: conditions}, since, unseen
             )
             lasting.extend(built)
             return checker
@@ -587,14 +597,21 @@ class RuleLevel:
             checkers[level] = None if value == ALWAYS else await build(value)
         hide_checker = await build(hide) if hide else None
         # Det som sparades för villkor som inte finns längre glöms.
-        for key in since.keys() - {timed.key for timed in lasting}:
+        keys = {timed.key for timed in lasting}
+        for key in since.keys() - keys:
             del since[key]
-        return cls(name, checkers, hide_checker, lasting, since)
+        unseen.update(keys - since.keys(), keys & set(unconfirmed))
+        return cls(name, checkers, hide_checker, lasting, since, unseen)
 
     @property
     def started(self) -> dict[str, datetime]:
         """När villkoren med tid som gäller just nu började gälla."""
         return dict(self._started)
+
+    @property
+    def unconfirmed(self) -> set[str]:
+        """De av villkoren i started vars start sattes utan att övergången sågs."""
+        return self._unseen & self._started.keys()
 
     def evaluate(self) -> str:
         """Nivån som gäller just nu, eller dold."""

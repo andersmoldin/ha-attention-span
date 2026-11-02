@@ -105,6 +105,50 @@ async def test_a_rule_added_mid_run_alarms_when_ha_knows_the_time_has_passed(
     assert level(hass) == "alarm"
 
 
+async def test_a_rule_added_mid_run_hides_when_ha_knows_the_longer_time_has_passed(
+    hass: HomeAssistant, freezer
+):
+    """Två tider på samma villkor: när HA bekräftar den kortare vet HA mer om den längre."""
+    freezer.move_to("2026-10-26T06:00:00+00:00")
+    hass.states.async_set("vacuum.findus", "unavailable")
+    freezer.move_to("2026-10-26T08:00:00+00:00")
+    entry = await add_integration(hass)
+    await add(
+        hass,
+        entry,
+        {"alarm": [OFFLINE | {"for": {"hours": 1}}], "hide": [OFFLINE | {"for": {"hours": 3}}]},
+    )
+    assert level(hass) == "alarm"
+    await tick(hass, freezer, timedelta(minutes=59, seconds=59))
+    assert level(hass) == "alarm"
+    await tick(hass, freezer, timedelta(seconds=2))
+    assert level(hass) == "hidden"
+
+
+async def test_a_rule_added_mid_run_alarms_when_ha_knows_also_after_a_reload(
+    hass: HomeAssistant, freezer
+):
+    """En annan regel läggs till och posten laddas om; HA:s last_changed består."""
+    freezer.move_to("2026-10-26T07:00:00+00:00")
+    hass.states.async_set("vacuum.findus", "unavailable")
+    freezer.move_to("2026-10-26T08:00:00+00:00")
+    entry = await add_integration(hass)
+    await add(hass, entry, {"problem": [OFFLINE], "alarm": [OFFLINE_2H]})
+    await tick(hass, freezer, timedelta(minutes=10))
+    await add_rule(
+        hass,
+        entry,
+        "status",
+        {"name": "Nova", "icon": "mdi:robot-vacuum", "entity": "vacuum.nova"},
+        levels={"problem": "always"},
+    )
+    assert level(hass) == "problem"
+    await tick(hass, freezer, timedelta(minutes=49, seconds=59))
+    assert level(hass) == "problem"
+    await tick(hass, freezer, timedelta(seconds=2))
+    assert level(hass) == "alarm"
+
+
 async def test_a_shorter_time_after_a_change_of_the_rule_alarms_at_once(
     hass: HomeAssistant, freezer
 ):

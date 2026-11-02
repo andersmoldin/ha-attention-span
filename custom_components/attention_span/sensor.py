@@ -127,6 +127,7 @@ class RuleSensor(SensorEntity, RestoreEntity):
                 key: dt_util.parse_datetime(since, raise_on_error=True)
                 for key, since in saved.get("conditions", {}).items()
             },
+            self._store.unconfirmed(self._rule_id),
         )
         self.async_on_remove(evaluation.async_unload)
         self._evaluation = evaluation
@@ -245,6 +246,7 @@ class RuleSensor(SensorEntity, RestoreEntity):
         if (snooze := self._snooze.saved) is not None:
             saved["snooze"] = snooze
         self._store.async_set(self._rule_id, saved)
+        self._store.async_set_unconfirmed(self._rule_id, self._evaluation.unconfirmed)
 
     @callback
     def _async_reevaluate(self) -> None:
