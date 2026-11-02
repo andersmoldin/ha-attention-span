@@ -48,11 +48,17 @@ class SavedRule(TypedDict, total=False):
 
 
 class SinceStore:
-    """Det som ska överleva en omstart, per Rule (subentryns id)."""
+    """Det som ska överleva en omstart, per Rule (subentryns id).
+
+    Också vilka villkors start som är obekräftad, bara i minnet: det ska överleva en
+    omladdning men inte en omstart. Efter en omstart räknar HA från omstarten, så en sparad
+    start vet då mer än HA.
+    """
 
     def __init__(self, hass: HomeAssistant) -> None:
         self._store = Store[dict[str, Any]](hass, STORAGE_VERSION, STORAGE_KEY)
         self._rules: dict[str, SavedRule] = {}
+        self._unconfirmed: dict[str, set[str]] = {}
 
     async def async_load(self) -> None:
         stored = await self._store.async_load()
@@ -60,6 +66,14 @@ class SinceStore:
 
     def get(self, rule: str) -> SavedRule:
         return copy.deepcopy(self._rules.get(rule, SavedRule()))
+
+    def unconfirmed(self, rule: str) -> set[str]:
+        """Nycklarna i conditions vars start är obekräftad."""
+        return set(self._unconfirmed.get(rule, ()))
+
+    @callback
+    def async_set_unconfirmed(self, rule: str, keys: Iterable[str]) -> None:
+        self._unconfirmed[rule] = set(keys)
 
     @callback
     def async_set(self, rule: str, data: SavedRule) -> None:
@@ -71,6 +85,10 @@ class SinceStore:
     @callback
     def async_keep(self, rules: Iterable[str]) -> None:
         """Glöm reglerna som inte finns längre."""
+        rules = set(rules)
+        self._unconfirmed = {
+            rule: keys for rule, keys in self._unconfirmed.items() if rule in rules
+        }
         kept = {rule: self._rules[rule] for rule in rules if rule in self._rules}
         if kept != self._rules:
             self._rules = kept
@@ -78,6 +96,7 @@ class SinceStore:
 
     async def async_remove(self) -> None:
         self._rules = {}
+        self._unconfirmed = {}
         await self._store.async_remove()
 
     @callback

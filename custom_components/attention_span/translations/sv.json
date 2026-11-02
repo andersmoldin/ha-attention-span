@@ -119,7 +119,7 @@
         },
         "conditions": {
           "title": "Villkor",
-          "description": "Ange villkoren för nivåerna med Villkor. Flera villkor för samma nivå måste alla gälla; använd «Eller» om det räcker att ett gäller.",
+          "description": "Ange villkoren för nivåerna med Villkor. Flera villkor för samma nivå måste alla gälla; använd «Eller» om det räcker att ett gäller.\n\nEn template räknas om när det den läser ändras. Läser den tiden, till exempel now(), räknas den om en gång i minuten, på sekund 0. Det som Home Assistant inte följer, till exempel area_entities() och random, räknas om först när något annat i templaten ändras.",
           "data": {
             "alarm": "Larm",
             "problem": "Problem",
