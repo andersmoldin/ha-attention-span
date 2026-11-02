@@ -119,7 +119,7 @@
         },
         "conditions": {
           "title": "Conditions",
-          "description": "Set the conditions for the levels with Condition. Several conditions for the same level must all hold; use «Or» if one is enough.",
+          "description": "Set the conditions for the levels with Condition. Several conditions for the same level must all hold; use «Or» if one is enough.\n\nA template is worked out again when what it reads changes. If it reads the time, for example now(), it is worked out again once a minute, on second 0. What Home Assistant does not follow, for example area_entities() and random, is only worked out again when something else in the template changes.",
           "data": {
             "alarm": "Alarm",
             "problem": "Problem",
